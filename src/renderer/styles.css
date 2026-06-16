@@ -1,0 +1,341 @@
+:root {
+  --bg: oklch(17% 0.02 265);
+  --surface: oklch(22% 0.025 265);
+  --surface-2: oklch(26% 0.03 265);
+  --line: oklch(33% 0.03 265);
+  --text: oklch(95% 0.01 265);
+  --muted: oklch(70% 0.02 265);
+  --accent: oklch(72% 0.16 230);
+  --accent-strong: oklch(64% 0.18 230);
+  --ok: oklch(72% 0.16 150);
+  --warn: oklch(80% 0.14 80);
+  --danger: oklch(66% 0.2 25);
+  --radius: 12px;
+  --shadow: 0 8px 30px oklch(0% 0 0 / 0.35);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  min-height: 100vh;
+}
+
+/* Top bar */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--surface), transparent);
+  position: sticky;
+  top: 0;
+  backdrop-filter: blur(8px);
+  z-index: 5;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.brand-mark {
+  color: var(--accent);
+  font-size: 20px;
+}
+.nav {
+  display: flex;
+  gap: 6px;
+}
+.nav-link {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: color 150ms, background 150ms;
+}
+.nav-link:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.nav-link.active {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.content {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 32px 28px 64px;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+h1 {
+  font-size: 28px;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+.muted {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 4px 0 0;
+}
+
+/* Banners */
+.banner {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.banner-error {
+  background: oklch(40% 0.12 25 / 0.25);
+  border: 1px solid var(--danger);
+}
+.banner-ok {
+  background: oklch(40% 0.1 150 / 0.2);
+  border: 1px solid var(--ok);
+}
+
+/* Watch grid */
+.watch-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+.watch-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow);
+  transition: transform 150ms, border-color 150ms;
+}
+.watch-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+.watch-card-top {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.watch-route {
+  font-size: 20px;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.watch-label {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 2px 0 16px;
+}
+.watch-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 0 0 16px;
+}
+.watch-meta dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.watch-meta dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  font-size: 15px;
+}
+.watch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+/* Badges */
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.badge-ok {
+  background: oklch(40% 0.1 150 / 0.3);
+  color: var(--ok);
+}
+.badge-warn {
+  background: oklch(50% 0.12 80 / 0.25);
+  color: var(--warn);
+}
+.badge-muted {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.badge-info {
+  background: oklch(40% 0.1 230 / 0.3);
+  color: var(--accent);
+}
+
+/* Buttons */
+.btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, opacity 150ms;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--accent-strong);
+  color: oklch(15% 0.02 265);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent);
+}
+.btn-ghost {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--text);
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.btn-danger {
+  background: transparent;
+  border-color: oklch(50% 0.12 25 / 0.5);
+  color: var(--danger);
+}
+.btn-danger:hover:not(:disabled) {
+  background: oklch(40% 0.12 25 / 0.2);
+}
+
+/* Empty state */
+.empty {
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 48px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* Forms */
+.form {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.form-narrow {
+  max-width: 460px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.field > span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.field input,
+.field select {
+  font: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px 12px;
+  color: var(--text);
+  transition: border-color 150ms;
+}
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.field-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.field small {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.field-error {
+  color: var(--danger);
+  font-size: 12px;
+}
+.group {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 0;
+}
+.group legend {
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.checks {
+  gap: 24px;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}

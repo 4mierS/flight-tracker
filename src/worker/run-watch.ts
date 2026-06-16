@@ -3,6 +3,7 @@ import { env } from "../lib/env";
 import { getProvider } from "../lib/providers";
 import type { FlightOffer } from "../lib/providers/types";
 import { sendDealAlert } from "../lib/notify/telegram";
+import { canSendNow, loadDailyCapState, type DailyCapState } from "./daily-cap";
 import type { Watch } from "@prisma/client";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -115,8 +116,19 @@ async function fireAlert(
   kind: "THRESHOLD" | "NEW_LOW",
   offer: FlightOffer,
   previousBest: number | null,
+  capState: DailyCapState,
 ): Promise<void> {
   const key = dedupeKey(watch.id, kind, offer);
+
+  // Global daily cap: if we're already at the limit, skip BOTH the send and the
+  // dedupe insert. Not writing the dedupe row is deliberate — the deal stays
+  // eligible and can alert tomorrow once the cap resets.
+  if (!(await canSendNow(prisma, capState))) {
+    console.log(
+      `[${watch.label ?? watch.id}] daily cap (${capState.cap}) reached — skipping ${kind} ${offer.origin}->${offer.destination} ${offer.price}`,
+    );
+    return;
+  }
 
   // ON CONFLICT DO NOTHING: skipDuplicates means a unique-key collision yields
   // count: 0 instead of throwing, so we don't log a scary error or swallow real
@@ -149,7 +161,10 @@ async function fireAlert(
 }
 
 /** Process one watch end-to-end: fetch, store, evaluate, alert. */
-export async function processWatch(watch: Watch): Promise<void> {
+export async function processWatch(
+  watch: Watch,
+  capState: DailyCapState,
+): Promise<void> {
   const tag = watch.label ?? watch.id;
 
   // 1) Historical best BEFORE inserting this run's data.
@@ -197,19 +212,24 @@ export async function processWatch(watch: Watch): Promise<void> {
   }
 
   if (previousBest === null || best.price < previousBest) {
-    await fireAlert(watch, "NEW_LOW", best, previousBest);
+    await fireAlert(watch, "NEW_LOW", best, previousBest, capState);
   }
   if (watch.threshold !== null && best.price <= watch.threshold) {
-    await fireAlert(watch, "THRESHOLD", best, previousBest);
+    await fireAlert(watch, "THRESHOLD", best, previousBest, capState);
   }
 }
 
 /** Process all active watches sequentially (keeps us under rate limits). */
 export async function processAllWatches(): Promise<void> {
+  // Load the cap + today's boundary once; canSendNow re-counts live per alert.
+  const capState = await loadDailyCapState(prisma);
   const watches = await prisma.watch.findMany({ where: { active: true } });
-  console.log(`Run start: ${watches.length} active watch(es)`);
+  console.log(
+    `Run start: ${watches.length} active watch(es)` +
+      (capState.cap !== null ? `, daily cap ${capState.cap}` : ""),
+  );
   for (const watch of watches) {
-    await processWatch(watch).catch((err) =>
+    await processWatch(watch, capState).catch((err) =>
       console.error(`[${watch.label ?? watch.id}] fatal:`, err),
     );
   }

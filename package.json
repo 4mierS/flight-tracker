@@ -3,11 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "dist/desktop/main.mjs",
   "scripts": {
     "worker": "tsx watch --env-file=.env src/worker/index.ts",
     "worker:start": "tsx --env-file=.env src/worker/index.ts",
     "worker:once": "tsx --env-file=.env src/worker/index.ts --once",
     "seed": "tsx --env-file=.env src/worker/seed-example.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "gui:dev": "vite",
+    "gui:build": "vite build",
+    "gui:start": "electron .",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
@@ -21,8 +27,17 @@
   "devDependencies": {
     "@types/node": "^22.10.5",
     "@types/node-cron": "^3.0.11",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^33.4.11",
     "prisma": "^6.2.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vite": "^6.4.3",
+    "vite-plugin-electron": "^0.29.1",
+    "vitest": "^2.1.9"
   }
 }
