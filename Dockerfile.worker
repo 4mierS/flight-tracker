@@ -1,0 +1,20 @@
+# Worker container. The dashboard (Next.js) will get its own build later;
+# this image runs the long-lived node-cron scheduler.
+FROM node:22-slim AS base
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+
+# Install deps (cached layer).
+COPY package.json package-lock.json* ./
+RUN npm install
+
+# Prisma client needs the schema at generate time.
+COPY prisma ./prisma
+RUN npx prisma generate
+
+# App source.
+COPY tsconfig.json ./
+COPY src ./src
+
+# Apply migrations on boot, then start the scheduler.
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run worker:start"]

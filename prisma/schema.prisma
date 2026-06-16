@@ -1,0 +1,114 @@
+// Flight Price Tracker — v1 data model
+//
+// Design rule (from the brief): price_snapshots is APPEND-ONLY.
+// We never overwrite a "current price". Every observation is a new row.
+// History is what makes trend / new-low / median deal-scoring possible later.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TripType {
+  ONE_WAY
+  RETURN
+}
+
+enum AlertKind {
+  THRESHOLD // current best dropped at/below the watch's threshold
+  NEW_LOW   // current best is the cheapest we've ever recorded for this watch
+}
+
+/// A route configuration the worker checks on every run.
+/// origins[] x destinations[] are expanded into all combinations.
+model Watch {
+  id    String  @id @default(cuid())
+  label String? // friendly name, e.g. "DUS->Asia winter"
+
+  // Route: every origin is paired with every destination.
+  origins      String[] // IATA codes, e.g. ["DUS", "CGN"]
+  destinations String[] // IATA codes, e.g. ["BKK", "SGN"]
+
+  tripType TripType @default(RETURN)
+
+  // Outbound date window. For a single fixed date, set both to the same day.
+  departFrom DateTime @db.Date
+  departTo   DateTime @db.Date
+
+  // Return date window. Null for ONE_WAY.
+  returnFrom DateTime? @db.Date
+  returnTo   DateTime? @db.Date
+
+  minStayDays Int? // "at least N days there" (RETURN only)
+  maxStops    Int  @default(2)
+  directOnly  Boolean @default(false)
+  passengers  Int  @default(1)
+
+  // Alert when the best price is at/below this (whole currency units, e.g. EUR).
+  threshold Int?
+  currency  String @default("EUR")
+
+  // Mute this watch's alerts until this time (snapshots still get recorded).
+  snoozeUntil DateTime?
+  active      Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  snapshots PriceSnapshot[]
+  alerts    AlertSent[]
+
+  @@index([active])
+}
+
+/// Every observed price. Append-only. Raw material for history/trend/new-low.
+model PriceSnapshot {
+  id      String @id @default(cuid())
+  watchId String
+  watch   Watch  @relation(fields: [watchId], references: [id], onDelete: Cascade)
+
+  origin      String
+  destination String
+  departDate  DateTime  @db.Date
+  returnDate  DateTime? @db.Date
+
+  stops    Int
+  price    Int // whole currency units, as returned by the API
+  currency String
+
+  airline String?
+  link    String? @db.Text
+
+  foundAt    DateTime? // when the FARE was found, per the API (cache timestamp)
+  observedAt DateTime  @default(now()) // when WE recorded it
+
+  // Hot paths: "history for this watch" and "best for this route+dates".
+  @@index([watchId, observedAt])
+  @@index([watchId, origin, destination, departDate])
+}
+
+/// Dedupe table: prevents pinging repeatedly for the same deal.
+model AlertSent {
+  id      String @id @default(cuid())
+  watchId String
+  watch   Watch  @relation(fields: [watchId], references: [id], onDelete: Cascade)
+
+  kind        AlertKind
+  origin      String
+  destination String
+  departDate  DateTime  @db.Date
+  returnDate  DateTime? @db.Date
+  price       Int
+
+  // One alert per distinct (watch, kind, route, dates, price). The unique
+  // constraint is the actual dedupe mechanism — we insert first, send only
+  // if the insert wins.
+  dedupeKey String   @unique
+  sentAt    DateTime @default(now())
+
+  @@index([watchId, sentAt])
+}

@@ -1,0 +1,54 @@
+# Local dev: `docker compose up`. On Coolify, point a resource at this file.
+# v1 ships the worker + postgres. The dashboard service is stubbed in (commented)
+# so the shape is clear for when you build it.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flight
+      POSTGRES_PASSWORD: flight
+      POSTGRES_DB: flight
+    ports:
+      - "5432:5432"
+    volumes:
+      - flight_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flight"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://flight:flight@db:5432/flight?schema=public"
+      TRAVELPAYOUTS_TOKEN: "${TRAVELPAYOUTS_TOKEN}"
+      TRAVELPAYOUTS_MARKET: "${TRAVELPAYOUTS_MARKET:-uk}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
+      CRON_SCHEDULE: "${CRON_SCHEDULE:-0 */4 * * *}"
+      DEFAULT_CURRENCY: "${DEFAULT_CURRENCY:-EUR}"
+      PROVIDER_REQUEST_DELAY_MS: "${PROVIDER_REQUEST_DELAY_MS:-400}"
+
+  # dashboard:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.web
+  #   restart: unless-stopped
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   environment:
+  #     DATABASE_URL: "postgresql://flight:flight@db:5432/flight?schema=public"
+  #   ports:
+  #     - "3000:3000"
+
+volumes:
+  flight_pgdata:
