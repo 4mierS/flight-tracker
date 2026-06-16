@@ -111,4 +111,18 @@ model AlertSent {
   sentAt    DateTime @default(now())
 
   @@index([watchId, sentAt])
+  // Counting today's sends for the global daily cap.
+  @@index([sentAt])
+}
+
+/// App-wide settings. Single row (id = "singleton").
+model Settings {
+  id String @id @default("singleton")
+
+  // Global cap on Telegram alerts per calendar day. null => unlimited.
+  dailyMessageCap Int?
+  // IANA tz used to compute the "today" boundary for the cap reset.
+  timezone String @default("Europe/Berlin")
+
+  updatedAt DateTime @updatedAt
 }

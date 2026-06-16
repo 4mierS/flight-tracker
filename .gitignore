@@ -1,3 +1,7 @@
 .env
+.env.desktop
 node_modules/
+dist/
+dist-electron/
+release/
 
