@@ -1,5 +1,6 @@
-.env
-.env.desktop
+.env*
+.env*.[!e][!x][!a][!m][!p][!l][!e]
+
 node_modules/
 dist/
 dist-electron/

@@ -46,6 +46,8 @@ function matchesWatch(watch: Watch, o: FlightOffer): boolean {
       return false;
     if (watch.minStayDays && daysBetween(o.departDate, o.returnDate) < watch.minStayDays)
       return false;
+    if (watch.maxStayDays && daysBetween(o.departDate, o.returnDate) > watch.maxStayDays)
+      return false;
   }
   return true;
 }

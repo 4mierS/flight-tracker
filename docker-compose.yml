@@ -37,18 +37,18 @@ services:
       DEFAULT_CURRENCY: "${DEFAULT_CURRENCY:-EUR}"
       PROVIDER_REQUEST_DELAY_MS: "${PROVIDER_REQUEST_DELAY_MS:-400}"
 
-  # dashboard:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.web
-  #   restart: unless-stopped
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   environment:
-  #     DATABASE_URL: "postgresql://flight:flight@db:5432/flight?schema=public"
-  #   ports:
-  #     - "3000:3000"
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://flight:flight@db:5432/flight?schema=public"
+    ports:
+      - "3000:3000"
 
 volumes:
   flight_pgdata:

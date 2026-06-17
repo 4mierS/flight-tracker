@@ -44,6 +44,7 @@ model Watch {
   returnTo   DateTime? @db.Date
 
   minStayDays Int? // "at least N days there" (RETURN only)
+  maxStayDays Int? // "at most N days there" (RETURN only)
   maxStops    Int  @default(2)
   directOnly  Boolean @default(false)
   passengers  Int  @default(1)
