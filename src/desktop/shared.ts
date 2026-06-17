@@ -35,6 +35,8 @@ export interface WatchDTO {
 
 export interface SettingsDTO {
   dailyMessageCap: number | null;
+  retentionDays: number | null;
+  maxSnapshotsPerWatch: number | null;
   timezone: string;
 }
 

@@ -26,6 +26,14 @@ const addDays = (d: Date, n: number): Date => {
   return out;
 };
 const ymd = (d: Date): string => d.toISOString().slice(0, 10);
+const parseYmd = (s: string): Date | null => {
+  const t = s.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  const d = new Date(`${t}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+const daysBetween = (from: Date, to: Date): number =>
+  Math.round((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000));
 
 /** Blank form prefilled with a sensible ~3-month return-trip window. */
 export function emptyForm(): WatchFormState {
@@ -66,6 +74,35 @@ export function formFromDTO(w: WatchDTO): WatchFormState {
     threshold: w.threshold?.toString() ?? "",
     currency: w.currency,
     active: w.active,
+  };
+}
+
+/**
+ * Update the outbound departure date and, for RETURN trips, derive the return
+ * window from it: returnFrom = departFrom + minStayDays, with returnTo shifted
+ * to preserve the existing window width. ONE_WAY leaves return fields alone.
+ * A blank min stay counts as 0; blank/invalid return dates give a 0-day window.
+ */
+export function shiftReturnWindow(
+  form: WatchFormState,
+  newDepartFrom: string,
+): WatchFormState {
+  const next = { ...form, departFrom: newDepartFrom };
+  if (form.tripType !== "RETURN") return next;
+
+  const base = parseYmd(newDepartFrom);
+  if (!base) return next; // incomplete date entry — don't clobber return fields.
+
+  const minStay = numOrNull(form.minStayDays) ?? 0;
+  const oldFrom = parseYmd(form.returnFrom);
+  const oldTo = parseYmd(form.returnTo);
+  const width = oldFrom && oldTo ? Math.max(0, daysBetween(oldFrom, oldTo)) : 0;
+
+  const returnFrom = addDays(base, minStay);
+  return {
+    ...next,
+    returnFrom: ymd(returnFrom),
+    returnTo: ymd(addDays(returnFrom, width)),
   };
 }
 

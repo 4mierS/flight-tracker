@@ -5,6 +5,7 @@ import {
   emptyForm,
   formFromDTO,
   formToInput,
+  shiftReturnWindow,
   type WatchFormState,
 } from "../lib/form";
 
@@ -130,7 +131,9 @@ export function WatchEditor(props: Props) {
               <input
                 type="date"
                 value={form.departFrom}
-                onChange={(e) => set("departFrom", e.target.value)}
+                onChange={(e) =>
+                  setForm((f) => shiftReturnWindow(f, e.target.value))
+                }
               />
               {err("departFrom")}
             </label>

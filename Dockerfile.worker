@@ -16,5 +16,24 @@ RUN npx prisma generate
 COPY tsconfig.json ./
 COPY src ./src
 
-# Apply migrations on boot, then start the scheduler.
-CMD ["sh", "-c", "npx prisma migrate deploy && npm run worker:start"]
+# Create .env file at runtime from environment variables.
+# This allows docker-compose to pass env vars without copying the actual .env file.
+RUN echo '#!/bin/sh' > /entrypoint.sh && \
+    echo 'set -e' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo 'cat > .env << EOF' >> /entrypoint.sh && \
+    echo 'DATABASE_URL="$DATABASE_URL"' >> /entrypoint.sh && \
+    echo 'TRAVELPAYOUTS_TOKEN="$TRAVELPAYOUTS_TOKEN"' >> /entrypoint.sh && \
+    echo 'TRAVELPAYOUTS_MARKET="${TRAVELPAYOUTS_MARKET:-uk}"' >> /entrypoint.sh && \
+    echo 'TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN"' >> /entrypoint.sh && \
+    echo 'TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID"' >> /entrypoint.sh && \
+    echo 'CRON_SCHEDULE="${CRON_SCHEDULE:-0 */4 * * *}"' >> /entrypoint.sh && \
+    echo 'DEFAULT_CURRENCY="${DEFAULT_CURRENCY:-EUR}"' >> /entrypoint.sh && \
+    echo 'PROVIDER_REQUEST_DELAY_MS="${PROVIDER_REQUEST_DELAY_MS:-400}"' >> /entrypoint.sh && \
+    echo 'EOF' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo 'chmod 600 .env' >> /entrypoint.sh && \
+    echo 'npx prisma migrate deploy && npm run worker:start' >> /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

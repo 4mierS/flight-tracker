@@ -124,5 +124,11 @@ model Settings {
   // IANA tz used to compute the "today" boundary for the cap reset.
   timezone String @default("Europe/Berlin")
 
+  // Snapshot retention. Both null => keep everything (append-only forever).
+  // Delete snapshots older than this many days (global). null => off.
+  retentionDays Int?
+  // Keep only the newest N snapshots per watch; delete older. null => off.
+  maxSnapshotsPerWatch Int?
+
   updatedAt DateTime @updatedAt
 }

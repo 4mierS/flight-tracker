@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { emptyForm, formFromDTO, formToInput, type WatchFormState } from "./form";
+import {
+  emptyForm,
+  formFromDTO,
+  formToInput,
+  shiftReturnWindow,
+  type WatchFormState,
+} from "./form";
 import { watchInputSchema } from "../../lib/validation/watch";
 import type { WatchDTO } from "../../desktop/shared";
 
@@ -60,6 +66,45 @@ describe("emptyForm", () => {
       { ...emptyForm(), origins: "FRA", destinations: "AMM" },
     );
     expect(watchInputSchema.safeParse(input).success).toBe(true);
+  });
+});
+
+describe("shiftReturnWindow", () => {
+  it("sets returnFrom to departFrom + minStay and preserves window width", () => {
+    // Original return window is 99 days wide (06-23 .. 09-30).
+    const next = shiftReturnWindow(filledForm, "2026-07-01");
+    expect(next.departFrom).toBe("2026-07-01");
+    // 2026-07-01 + 7 days
+    expect(next.returnFrom).toBe("2026-07-08");
+    // width preserved: 2026-09-30 - 2026-06-23 = 99 days => 07-08 + 99
+    expect(next.returnTo).toBe("2026-10-15");
+  });
+
+  it("treats a blank min stay as zero", () => {
+    const next = shiftReturnWindow({ ...filledForm, minStayDays: "" }, "2026-07-01");
+    expect(next.returnFrom).toBe("2026-07-01");
+  });
+
+  it("collapses the window to a single day when return dates are blank", () => {
+    const next = shiftReturnWindow(
+      { ...filledForm, returnFrom: "", returnTo: "" },
+      "2026-07-01",
+    );
+    expect(next.returnFrom).toBe("2026-07-08");
+    expect(next.returnTo).toBe("2026-07-08");
+  });
+
+  it("leaves return fields untouched for ONE_WAY", () => {
+    const oneWay = { ...filledForm, tripType: "ONE_WAY" as const };
+    const next = shiftReturnWindow(oneWay, "2026-07-01");
+    expect(next.departFrom).toBe("2026-07-01");
+    expect(next.returnFrom).toBe(filledForm.returnFrom);
+    expect(next.returnTo).toBe(filledForm.returnTo);
+  });
+
+  it("produces a schema-valid RETURN watch", () => {
+    const next = shiftReturnWindow(filledForm, "2026-07-01");
+    expect(watchInputSchema.safeParse(formToInput(next)).success).toBe(true);
   });
 });
 

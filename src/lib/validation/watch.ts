@@ -145,6 +145,9 @@ export function toPersistData(raw: unknown): WatchPersistData {
 /** Settings form: blank cap field means "unlimited" (null). */
 export const settingsInputSchema = z.object({
   dailyMessageCap: z.number().int().positive().nullish(),
+  // Snapshot retention. Blank/null => that limit is disabled.
+  retentionDays: z.number().int().positive().nullish(),
+  maxSnapshotsPerWatch: z.number().int().positive().nullish(),
   timezone: z
     .string()
     .trim()

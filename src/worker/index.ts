@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { env } from "../lib/env";
 import { prisma } from "../lib/db";
 import { processAllWatches } from "./run-watch";
+import { runCleanup } from "./cleanup";
 
 let running = false;
 
@@ -15,11 +16,34 @@ async function tick(reason: string) {
   const started = Date.now();
   try {
     await processAllWatches();
+    await pruneSnapshots();
   } catch (err) {
     console.error("Run threw:", err);
   } finally {
     running = false;
     console.log(`(${reason}) took ${Math.round((Date.now() - started) / 1000)}s`);
+  }
+}
+
+/**
+ * Best-effort snapshot retention. Reads the current limits off the Settings
+ * singleton each run, so config changes take effect on the next cycle. Failures
+ * are logged but never abort the run — housekeeping must not block tracking.
+ */
+async function pruneSnapshots() {
+  try {
+    const settings = await prisma.settings.findUnique({
+      where: { id: "singleton" },
+      select: { retentionDays: true, maxSnapshotsPerWatch: true },
+    });
+    if (!settings) return;
+
+    const { byAge, byCount } = await runCleanup(prisma, settings);
+    if (byAge || byCount) {
+      console.log(`Cleanup: removed ${byAge} by age, ${byCount} by count`);
+    }
+  } catch (err) {
+    console.error("Cleanup failed (non-fatal):", err);
   }
 }
 

@@ -127,6 +127,8 @@ export function registerIpcHandlers(prisma: PrismaClient): void {
     const s = await prisma.settings.findUnique({ where: { id: "singleton" } });
     return {
       dailyMessageCap: s?.dailyMessageCap ?? null,
+      retentionDays: s?.retentionDays ?? null,
+      maxSnapshotsPerWatch: s?.maxSnapshotsPerWatch ?? null,
       timezone: s?.timezone ?? "Europe/Berlin",
     };
   });
@@ -134,11 +136,24 @@ export function registerIpcHandlers(prisma: PrismaClient): void {
   handle<SettingsDTO>(CHANNELS.settingsUpdate, async (input) => {
     const parsed = settingsInputSchema.parse(input);
     const cap = parsed.dailyMessageCap ?? null;
+    const retentionDays = parsed.retentionDays ?? null;
+    const maxSnapshotsPerWatch = parsed.maxSnapshotsPerWatch ?? null;
     const s = await prisma.settings.upsert({
       where: { id: "singleton" },
-      create: { id: "singleton", dailyMessageCap: cap, timezone: parsed.timezone },
-      update: { dailyMessageCap: cap, timezone: parsed.timezone },
+      create: {
+        id: "singleton",
+        dailyMessageCap: cap,
+        retentionDays,
+        maxSnapshotsPerWatch,
+        timezone: parsed.timezone,
+      },
+      update: { dailyMessageCap: cap, retentionDays, maxSnapshotsPerWatch, timezone: parsed.timezone },
     });
-    return { dailyMessageCap: s.dailyMessageCap, timezone: s.timezone };
+    return {
+      dailyMessageCap: s.dailyMessageCap,
+      retentionDays: s.retentionDays,
+      maxSnapshotsPerWatch: s.maxSnapshotsPerWatch,
+      timezone: s.timezone,
+    };
   });
 }

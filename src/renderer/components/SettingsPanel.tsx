@@ -17,6 +17,8 @@ const COMMON_ZONES = [
 
 export function SettingsPanel({ onClose }: Props) {
   const [cap, setCap] = useState("");
+  const [retentionDays, setRetentionDays] = useState("");
+  const [maxSnapshots, setMaxSnapshots] = useState("");
   const [timezone, setTimezone] = useState("Europe/Berlin");
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +30,8 @@ export function SettingsPanel({ onClose }: Props) {
       const res = await window.api.settings.get();
       if (res.ok) {
         setCap(res.data.dailyMessageCap?.toString() ?? "");
+        setRetentionDays(res.data.retentionDays?.toString() ?? "");
+        setMaxSnapshots(res.data.maxSnapshotsPerWatch?.toString() ?? "");
         setTimezone(res.data.timezone);
       } else {
         setError(res.error);
@@ -42,8 +46,12 @@ export function SettingsPanel({ onClose }: Props) {
     setSaved(false);
 
     const capValue = cap.trim() === "" ? null : Number(cap);
+    const retentionValue = retentionDays.trim() === "" ? null : Number(retentionDays);
+    const maxSnapshotsValue = maxSnapshots.trim() === "" ? null : Number(maxSnapshots);
     const parsed = settingsInputSchema.safeParse({
       dailyMessageCap: capValue,
+      retentionDays: retentionValue,
+      maxSnapshotsPerWatch: maxSnapshotsValue,
       timezone,
     });
     if (!parsed.success) {
@@ -86,6 +94,42 @@ export function SettingsPanel({ onClose }: Props) {
             Max Telegram alerts per day across all watches. Once reached, further
             deals are skipped until the next day (they can alert tomorrow). Leave
             blank for unlimited.
+          </small>
+        </label>
+
+        <label className="field">
+          <span>Keep history for (days)</span>
+          <input
+            type="number"
+            min={1}
+            placeholder="blank = keep forever"
+            value={retentionDays}
+            onChange={(e) => {
+              setRetentionDays(e.target.value);
+              setSaved(false);
+            }}
+          />
+          <small className="muted">
+            Price snapshots older than this are deleted on each worker run.
+            Leave blank to keep all history.
+          </small>
+        </label>
+
+        <label className="field">
+          <span>Max snapshots per watch</span>
+          <input
+            type="number"
+            min={1}
+            placeholder="blank = unlimited"
+            value={maxSnapshots}
+            onChange={(e) => {
+              setMaxSnapshots(e.target.value);
+              setSaved(false);
+            }}
+          />
+          <small className="muted">
+            Keeps only the newest N price snapshots for each watch; older ones
+            are pruned. Leave blank for unlimited.
           </small>
         </label>
 
