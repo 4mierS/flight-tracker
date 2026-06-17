@@ -99,13 +99,17 @@ export class TravelpayoutsProvider implements FlightDataProvider {
 
   /** v1 workhorse: cheapest offers for one route over a departure window. */
   async searchOffers(q: OfferQuery): Promise<FlightOffer[]> {
+    // Convert YYYY-MM (month) to YYYY-MM-01 (first day) for API compatibility
+    const departureAt = q.departureAt.length === 7 ? `${q.departureAt}-01` : q.departureAt;
+    const returnAt = q.returnAt && q.returnAt.length === 7 ? `${q.returnAt}-01` : q.returnAt;
+
     const rows = await this.get<PricesForDatesRow[]>(
       "/aviasales/v3/prices_for_dates",
       {
         origin: q.origin,
         destination: q.destination,
-        departure_at: q.departureAt,
-        return_at: q.returnAt,
+        departure_at: departureAt,
+        return_at: returnAt,
         // For round trips we must send one_way=false to get multiple offers;
         // one_way=true collapses results to a single ticket due to grouping.
         one_way: q.oneWay,
