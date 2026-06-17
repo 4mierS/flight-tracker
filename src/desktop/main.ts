@@ -1,8 +1,11 @@
 import { app, BrowserWindow } from "electron";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { registerIpcHandlers } from "./handlers";
+import { WorkerRunner } from "./worker-runner";
+import { CHANNELS } from "./shared";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -28,6 +31,44 @@ loadDatabaseEnv();
 
 const prisma = new PrismaClient();
 
+/**
+ * Configure the worker runner. In dev we run the TS source via tsx against the
+ * repo root; in a packaged build we run the compiled worker via Electron's node.
+ * The worker loads its own secrets from `--env-file`, so we only need to point
+ * at the right env file (defaults to `.env`, overridable via WORKER_ENV_FILE).
+ */
+function createRunner(): WorkerRunner {
+  const isDev = Boolean(process.env.VITE_DEV_SERVER_URL) || !app.isPackaged;
+  const rootDir = isDev ? process.cwd() : app.getAppPath();
+  const envFile =
+    process.env.WORKER_ENV_FILE ?? path.resolve(rootDir, ".env");
+  if (!fs.existsSync(envFile)) {
+    console.warn(`[worker] env file not found at ${envFile} — runs will fail until it exists`);
+  }
+  return new WorkerRunner({
+    mode: isDev ? "dev" : "packaged",
+    rootDir,
+    envFile,
+    execPath: process.execPath,
+  });
+}
+
+const worker = createRunner();
+
+// Push every worker status change to all renderer windows.
+worker.onChange((status) => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(CHANNELS.workerStatusChanged, status);
+  }
+});
+
+// Push per-watch search status changes too.
+worker.onWatchChange((status) => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(CHANNELS.watchRunStatusChanged, status);
+  }
+});
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1100,
@@ -50,7 +91,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  registerIpcHandlers(prisma);
+  registerIpcHandlers(prisma, worker);
   createWindow();
 
   app.on("activate", () => {
@@ -63,5 +104,6 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  worker.stopAll(); // never orphan a worker child (global or per-watch)
   void prisma.$disconnect();
 });

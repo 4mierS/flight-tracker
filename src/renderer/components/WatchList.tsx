@@ -1,5 +1,6 @@
-import { useState } from "react";
-import type { WatchDTO } from "../../desktop/shared";
+import { useCallback, useEffect, useState } from "react";
+import type { WatchDTO, WatchRunStatus } from "../../desktop/shared";
+import { WatchCard } from "./WatchCard";
 
 interface Props {
   watches: WatchDTO[] | null;
@@ -8,27 +9,36 @@ interface Props {
   onChanged: () => Promise<void>;
 }
 
-function routeSummary(w: WatchDTO): string {
-  return `${w.origins.join("/")} → ${w.destinations.join("/")}`;
-}
-
-function statusBadge(w: WatchDTO): { label: string; cls: string } {
-  if (!w.active) return { label: "Paused", cls: "badge badge-muted" };
-  if (w.snoozeUntil && new Date(w.snoozeUntil) > new Date())
-    return { label: "Snoozed", cls: "badge badge-warn" };
-  return { label: "Active", cls: "badge badge-ok" };
-}
-
 export function WatchList({ watches, onCreate, onEdit, onChanged }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [runStatuses, setRunStatuses] = useState<Map<string, WatchRunStatus>>(new Map());
 
-  async function act(id: string, fn: () => Promise<{ ok: boolean; error?: string }>) {
-    setBusyId(id);
-    const res = await fn();
-    setBusyId(null);
-    if (!res.ok) alert(res.error ?? "Action failed");
-    await onChanged();
-  }
+  // Track per-watch search status: seed once, then live-update via push events.
+  useEffect(() => {
+    void window.api.worker.watchStatuses().then((res) => {
+      if (res.ok) setRunStatuses(new Map(res.data.map((s) => [s.watchId, s])));
+    });
+    return window.api.worker.onWatchStatusChanged((s) => {
+      setRunStatuses((prev) => {
+        const next = new Map(prev);
+        next.set(s.watchId, s);
+        return next;
+      });
+      // A finished search may have produced a new best price → refresh the list.
+      if (s.state === "idle") void onChanged();
+    });
+  }, [onChanged]);
+
+  const act = useCallback(
+    async (id: string, fn: () => Promise<{ ok: boolean; error?: string }>) => {
+      setBusyId(id);
+      const res = await fn();
+      setBusyId(null);
+      if (!res.ok) alert(res.error ?? "Action failed");
+      await onChanged();
+    },
+    [onChanged],
+  );
 
   if (watches === null) {
     return <div className="empty">Loading watches…</div>;
@@ -54,76 +64,16 @@ export function WatchList({ watches, onCreate, onEdit, onChanged }: Props) {
         </div>
       ) : (
         <ul className="watch-grid">
-          {watches.map((w) => {
-            const badge = statusBadge(w);
-            const snoozed = w.snoozeUntil && new Date(w.snoozeUntil) > new Date();
-            return (
-              <li key={w.id} className="watch-card">
-                <div className="watch-card-top">
-                  <span className={badge.cls}>{badge.label}</span>
-                  {w.directOnly && <span className="badge badge-info">Direct</span>}
-                </div>
-                <h2 className="watch-route">{routeSummary(w)}</h2>
-                <p className="watch-label">{w.label ?? "Untitled watch"}</p>
-
-                <dl className="watch-meta">
-                  <div>
-                    <dt>Best seen</dt>
-                    <dd>{w.bestPrice !== null ? `${w.bestPrice} ${w.currency}` : "—"}</dd>
-                  </div>
-                  <div>
-                    <dt>Threshold</dt>
-                    <dd>{w.threshold !== null ? `${w.threshold} ${w.currency}` : "—"}</dd>
-                  </div>
-                  <div>
-                    <dt>Trip</dt>
-                    <dd>{w.tripType === "RETURN" ? "Round-trip" : "One-way"}</dd>
-                  </div>
-                </dl>
-
-                <div className="watch-actions">
-                  <button className="btn btn-ghost" onClick={() => onEdit(w)}>
-                    Edit
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    disabled={busyId === w.id}
-                    onClick={() =>
-                      act(w.id, () => window.api.watches.setActive(w.id, !w.active))
-                    }
-                  >
-                    {w.active ? "Pause" : "Resume"}
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    disabled={busyId === w.id}
-                    onClick={() =>
-                      act(w.id, () =>
-                        window.api.watches.snooze(
-                          w.id,
-                          snoozed
-                            ? null
-                            : new Date(Date.now() + 7 * 86_400_000).toISOString(),
-                        ),
-                      )
-                    }
-                  >
-                    {snoozed ? "Unsnooze" : "Snooze 7d"}
-                  </button>
-                  <button
-                    className="btn btn-danger"
-                    disabled={busyId === w.id}
-                    onClick={() => {
-                      if (confirm(`Delete watch "${w.label ?? routeSummary(w)}"?`))
-                        void act(w.id, () => window.api.watches.remove(w.id));
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </li>
-            );
-          })}
+          {watches.map((w) => (
+            <WatchCard
+              key={w.id}
+              watch={w}
+              runStatus={runStatuses.get(w.id)}
+              busy={busyId === w.id}
+              onEdit={onEdit}
+              onAct={act}
+            />
+          ))}
         </ul>
       )}
     </section>

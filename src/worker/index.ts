@@ -1,8 +1,14 @@
 import cron from "node-cron";
 import { env } from "../lib/env";
 import { prisma } from "../lib/db";
-import { processAllWatches } from "./run-watch";
+import { processAllWatches, processWatchById } from "./run-watch";
 import { runCleanup } from "./cleanup";
+
+/** Read the value following a CLI flag, e.g. `--watch <id>`. */
+function flagValue(flag: string): string | undefined {
+  const i = process.argv.indexOf(flag);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
 
 let running = false;
 
@@ -48,6 +54,15 @@ async function pruneSnapshots() {
 }
 
 async function main() {
+  // Single-watch on-demand search (GUI "Search now"): run it and exit.
+  const watchId = flagValue("--watch");
+  if (watchId) {
+    console.log(`Worker: single-watch search ${watchId}`);
+    await processWatchById(watchId);
+    await prisma.$disconnect();
+    return;
+  }
+
   console.log(`Worker up. Schedule: "${env.CRON_SCHEDULE}"`);
 
   // Run once immediately on boot, then on schedule.
