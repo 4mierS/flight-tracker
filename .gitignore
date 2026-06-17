@@ -6,3 +6,7 @@ dist/
 dist-electron/
 release/
 
+# Local documentation (not committed to git)
+LOCAL-*.md
+SETUP-*.md
+NOTES.md
