@@ -221,6 +221,21 @@ export async function processWatch(
   }
 }
 
+/**
+ * Process a single watch by id, on demand (the GUI "Search now" button). Runs
+ * regardless of the `active` flag — the user asked for it explicitly — but
+ * snapshots/alerts behave exactly as in the scheduled path (snooze still
+ * suppresses alerts).
+ */
+export async function processWatchById(id: string): Promise<void> {
+  const capState = await loadDailyCapState(prisma);
+  const watch = await prisma.watch.findUnique({ where: { id } });
+  if (!watch) throw new Error(`Watch not found: ${id}`);
+  console.log(`Manual search: ${watch.label ?? watch.id}`);
+  await processWatch(watch, capState);
+  console.log("Manual search complete");
+}
+
 /** Process all active watches sequentially (keeps us under rate limits). */
 export async function processAllWatches(): Promise<void> {
   // Load the cap + today's boundary once; canSendNow re-counts live per alert.

@@ -3,6 +3,7 @@ import type { WatchDTO } from "../desktop/shared";
 import { WatchList } from "./components/WatchList";
 import { WatchEditor } from "./components/WatchEditor";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { WorkerControl } from "./components/WorkerControl";
 
 type View =
   | { name: "list" }
@@ -68,12 +69,15 @@ export function App() {
         )}
 
         {view.name === "list" && (
-          <WatchList
-            watches={watches}
-            onCreate={() => setView({ name: "create" })}
-            onEdit={(w) => setView({ name: "edit", watch: w })}
-            onChanged={refresh}
-          />
+          <>
+            <WorkerControl onRunFinished={() => void refresh()} />
+            <WatchList
+              watches={watches}
+              onCreate={() => setView({ name: "create" })}
+              onEdit={(w) => setView({ name: "edit", watch: w })}
+              onChanged={refresh}
+            />
+          </>
         )}
 
         {view.name === "create" && (

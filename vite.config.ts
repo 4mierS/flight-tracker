@@ -7,6 +7,9 @@ import electron from "vite-plugin-electron/simple";
  *  - renderer (React) → dist/renderer
  *  - Electron main    → dist/desktop/main.mjs (ESM; @prisma/client kept external)
  *  - preload bridge   → dist/desktop/preload.cjs (CommonJS for sandboxed preload)
+ *
+ * The worker is built separately via vite.worker.config.ts (only needed for
+ * packaged builds — in dev the GUI spawns the worker via tsx on the source).
  */
 export default defineConfig({
   plugins: [

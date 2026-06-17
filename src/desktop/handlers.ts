@@ -1,7 +1,21 @@
 import { ipcMain } from "electron";
 import type { PrismaClient, Watch } from "@prisma/client";
 import { toPersistData, settingsInputSchema } from "../lib/validation/watch";
-import { CHANNELS, type Result, type WatchDTO, type SettingsDTO } from "./shared";
+import {
+  CHANNELS,
+  type Result,
+  type WatchDTO,
+  type SettingsDTO,
+  type WorkerStatus,
+  type WatchRunStatus,
+  type SnapshotDTO,
+} from "./shared";
+import type { WorkerRunner } from "./worker-runner";
+import { toSnapshotDTO } from "./snapshot-dto";
+
+/** How many recent snapshots the inline "Recent results" list shows by default. */
+const DEFAULT_SNAPSHOT_LIMIT = 8;
+const MAX_SNAPSHOT_LIMIT = 100;
 
 const ymd = (d: Date | null): string | null =>
   d ? d.toISOString().slice(0, 10) : null;
@@ -68,7 +82,7 @@ async function bestPriceByWatch(prisma: PrismaClient): Promise<Map<string, numbe
   return new Map(rows.map((r) => [r.watchId, r._min.price ?? 0]));
 }
 
-export function registerIpcHandlers(prisma: PrismaClient): void {
+export function registerIpcHandlers(prisma: PrismaClient, worker: WorkerRunner): void {
   handle(CHANNELS.watchesList, async () => {
     const [watches, best] = await Promise.all([
       prisma.watch.findMany({ orderBy: { createdAt: "desc" } }),
@@ -124,6 +138,19 @@ export function registerIpcHandlers(prisma: PrismaClient): void {
     return null;
   });
 
+  handle<SnapshotDTO[]>(CHANNELS.watchesSnapshots, async (id, limit) => {
+    const take = Math.min(
+      typeof limit === "number" && limit > 0 ? limit : DEFAULT_SNAPSHOT_LIMIT,
+      MAX_SNAPSHOT_LIMIT,
+    );
+    const rows = await prisma.priceSnapshot.findMany({
+      where: { watchId: id as string },
+      orderBy: { observedAt: "desc" },
+      take,
+    });
+    return rows.map(toSnapshotDTO);
+  });
+
   handle<SettingsDTO>(CHANNELS.settingsGet, async () => {
     const s = await prisma.settings.findUnique({ where: { id: "singleton" } });
     return {
@@ -157,4 +184,19 @@ export function registerIpcHandlers(prisma: PrismaClient): void {
       timezone: s.timezone,
     };
   });
+
+  handle<WorkerStatus>(CHANNELS.workerRunOnce, async () => worker.runOnce());
+  handle<WorkerStatus>(CHANNELS.workerStart, async () => worker.start());
+  handle<WorkerStatus>(CHANNELS.workerStop, async () => worker.stop());
+  handle<WorkerStatus>(CHANNELS.workerStatus, async () => worker.getStatus());
+
+  handle<WatchRunStatus>(CHANNELS.watchSearch, async (id) =>
+    worker.searchWatch(id as string),
+  );
+  handle<WatchRunStatus>(CHANNELS.watchSearchStop, async (id) =>
+    worker.stopWatchSearch(id as string),
+  );
+  handle<WatchRunStatus[]>(CHANNELS.watchRunStatuses, async () =>
+    worker.getAllWatchStatuses(),
+  );
 }
