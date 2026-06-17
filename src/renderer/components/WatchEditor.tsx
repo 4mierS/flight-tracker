@@ -181,6 +181,17 @@ export function WatchEditor(props: Props) {
                 />
                 {err("minStayDays")}
               </label>
+              <label className="field">
+                <span>Max stay (days)</span>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="optional"
+                  value={form.maxStayDays}
+                  onChange={(e) => set("maxStayDays", e.target.value)}
+                />
+                {err("maxStayDays")}
+              </label>
             </div>
           </fieldset>
         )}

@@ -41,6 +41,7 @@ export const watchInputSchema = z
     returnTo: dateOnly.nullish(),
 
     minStayDays: z.number().int().min(0).max(365).nullish(),
+    maxStayDays: z.number().int().min(0).max(365).nullish(),
     maxStops: z.number().int().min(0).max(3),
     directOnly: z.boolean(),
     passengers: z.number().int().min(1).max(9),
@@ -88,6 +89,17 @@ export const watchInputSchema = z
           message: "Return window cannot start before the depart window",
         });
       }
+      if (
+        v.minStayDays != null &&
+        v.maxStayDays != null &&
+        v.maxStayDays < v.minStayDays
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["maxStayDays"],
+          message: "Max stay must be greater than or equal to min stay",
+        });
+      }
     }
   });
 
@@ -104,6 +116,7 @@ export interface WatchPersistData {
   returnFrom: Date | null;
   returnTo: Date | null;
   minStayDays: number | null;
+  maxStayDays: number | null;
   maxStops: number;
   directOnly: boolean;
   passengers: number;
@@ -132,6 +145,7 @@ export function toPersistData(raw: unknown): WatchPersistData {
     returnFrom: isReturn && v.returnFrom ? toDate(v.returnFrom) : null,
     returnTo: isReturn && v.returnTo ? toDate(v.returnTo) : null,
     minStayDays: isReturn ? v.minStayDays ?? null : null,
+    maxStayDays: isReturn ? v.maxStayDays ?? null : null,
     maxStops: v.maxStops,
     directOnly: v.directOnly,
     passengers: v.passengers,

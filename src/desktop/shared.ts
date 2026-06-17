@@ -20,6 +20,7 @@ export interface WatchDTO {
   returnFrom: string | null;
   returnTo: string | null;
   minStayDays: number | null;
+  maxStayDays: number | null;
   maxStops: number;
   directOnly: boolean;
   passengers: number;

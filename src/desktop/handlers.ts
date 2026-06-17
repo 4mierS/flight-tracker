@@ -18,6 +18,7 @@ function toWatchDTO(w: Watch, bestPrice: number | null): WatchDTO {
     returnFrom: ymd(w.returnFrom),
     returnTo: ymd(w.returnTo),
     minStayDays: w.minStayDays,
+    maxStayDays: w.maxStayDays,
     maxStops: w.maxStops,
     directOnly: w.directOnly,
     passengers: w.passengers,

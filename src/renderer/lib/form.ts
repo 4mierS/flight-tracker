@@ -12,6 +12,7 @@ export interface WatchFormState {
   returnFrom: string;
   returnTo: string;
   minStayDays: string; // numbers as strings for inputs; "" = unset
+  maxStayDays: string; // numbers as strings for inputs; "" = unset
   maxStops: string;
   directOnly: boolean;
   passengers: string;
@@ -48,6 +49,7 @@ export function emptyForm(): WatchFormState {
     returnFrom: ymd(addDays(today, 7)),
     returnTo: ymd(addDays(today, 104)),
     minStayDays: "7",
+    maxStayDays: "",
     maxStops: "1",
     directOnly: false,
     passengers: "1",
@@ -68,6 +70,7 @@ export function formFromDTO(w: WatchDTO): WatchFormState {
     returnFrom: w.returnFrom ?? "",
     returnTo: w.returnTo ?? "",
     minStayDays: w.minStayDays?.toString() ?? "",
+    maxStayDays: w.maxStayDays?.toString() ?? "",
     maxStops: w.maxStops.toString(),
     directOnly: w.directOnly,
     passengers: w.passengers.toString(),
@@ -79,8 +82,9 @@ export function formFromDTO(w: WatchDTO): WatchFormState {
 
 /**
  * Update the outbound departure date and, for RETURN trips, derive the return
- * window from it: returnFrom = departFrom + minStayDays, with returnTo shifted
- * to preserve the existing window width. ONE_WAY leaves return fields alone.
+ * window from it: returnFrom = departFrom + minStayDays. The returnTo is set to
+ * departFrom + maxStayDays when a max stay is configured; otherwise it shifts to
+ * preserve the existing window width. ONE_WAY leaves return fields alone.
  * A blank min stay counts as 0; blank/invalid return dates give a 0-day window.
  */
 export function shiftReturnWindow(
@@ -94,15 +98,24 @@ export function shiftReturnWindow(
   if (!base) return next; // incomplete date entry — don't clobber return fields.
 
   const minStay = numOrNull(form.minStayDays) ?? 0;
-  const oldFrom = parseYmd(form.returnFrom);
-  const oldTo = parseYmd(form.returnTo);
-  const width = oldFrom && oldTo ? Math.max(0, daysBetween(oldFrom, oldTo)) : 0;
-
+  const maxStay = numOrNull(form.maxStayDays);
   const returnFrom = addDays(base, minStay);
+
+  let returnTo: Date;
+  if (maxStay != null) {
+    // Latest allowed return is departFrom + max stay (clamped to >= returnFrom).
+    returnTo = addDays(base, Math.max(maxStay, minStay));
+  } else {
+    const oldFrom = parseYmd(form.returnFrom);
+    const oldTo = parseYmd(form.returnTo);
+    const width = oldFrom && oldTo ? Math.max(0, daysBetween(oldFrom, oldTo)) : 0;
+    returnTo = addDays(returnFrom, width);
+  }
+
   return {
     ...next,
     returnFrom: ymd(returnFrom),
-    returnTo: ymd(addDays(returnFrom, width)),
+    returnTo: ymd(returnTo),
   };
 }
 
@@ -132,6 +145,7 @@ export function formToInput(f: WatchFormState): WatchInput {
     returnFrom: isReturn ? f.returnFrom || null : null,
     returnTo: isReturn ? f.returnTo || null : null,
     minStayDays: numOrNull(f.minStayDays),
+    maxStayDays: numOrNull(f.maxStayDays),
     maxStops: numOrNull(f.maxStops) ?? 0,
     directOnly: f.directOnly,
     passengers: numOrNull(f.passengers) ?? 1,

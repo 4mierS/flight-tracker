@@ -19,6 +19,7 @@ const filledForm: WatchFormState = {
   returnFrom: "2026-06-23",
   returnTo: "2026-09-30",
   minStayDays: "7",
+  maxStayDays: "",
   maxStops: "0",
   directOnly: true,
   passengers: "1",
@@ -94,6 +95,24 @@ describe("shiftReturnWindow", () => {
     expect(next.returnTo).toBe("2026-07-08");
   });
 
+  it("sets returnTo to departFrom + maxStay when a max stay is configured", () => {
+    const next = shiftReturnWindow(
+      { ...filledForm, minStayDays: "7", maxStayDays: "21" },
+      "2026-07-01",
+    );
+    expect(next.returnFrom).toBe("2026-07-08"); // +7 min
+    expect(next.returnTo).toBe("2026-07-22"); // +21 max
+  });
+
+  it("clamps returnTo to returnFrom when maxStay is below minStay", () => {
+    const next = shiftReturnWindow(
+      { ...filledForm, minStayDays: "10", maxStayDays: "3" },
+      "2026-07-01",
+    );
+    expect(next.returnFrom).toBe("2026-07-11");
+    expect(next.returnTo).toBe("2026-07-11");
+  });
+
   it("leaves return fields untouched for ONE_WAY", () => {
     const oneWay = { ...filledForm, tripType: "ONE_WAY" as const };
     const next = shiftReturnWindow(oneWay, "2026-07-01");
@@ -121,6 +140,7 @@ describe("formFromDTO", () => {
       returnFrom: "2026-06-23",
       returnTo: "2026-09-30",
       minStayDays: 7,
+      maxStayDays: null,
       maxStops: 0,
       directOnly: true,
       passengers: 1,

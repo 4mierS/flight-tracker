@@ -32,6 +32,26 @@ describe("watchInputSchema", () => {
     expect(r.success).toBe(false);
   });
 
+  it("rejects a max stay below the min stay", () => {
+    const r = watchInputSchema.safeParse({
+      ...base,
+      minStayDays: 10,
+      maxStayDays: 3,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("accepts a max stay equal to or above the min stay", () => {
+    expect(
+      watchInputSchema.safeParse({ ...base, minStayDays: 7, maxStayDays: 14 })
+        .success,
+    ).toBe(true);
+    expect(
+      watchInputSchema.safeParse({ ...base, minStayDays: 7, maxStayDays: 7 })
+        .success,
+    ).toBe(true);
+  });
+
   it("rejects an out-of-order depart window", () => {
     const r = watchInputSchema.safeParse({
       ...base,
