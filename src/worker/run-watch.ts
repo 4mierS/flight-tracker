@@ -52,88 +52,127 @@ function matchesWatch(watch: Watch, o: FlightOffer): boolean {
   return true;
 }
 
-/** Fetch every matching offer for a watch using month-based searches (more efficient). */
+/**
+ * Calculate which return months are valid for a given departure month.
+ * A return month is valid if:
+ *   minStayDays <= (returnMonth_end - departMonth_start) AND
+ *   maxStayDays >= (returnMonth_start - departMonth_end)
+ */
+function getValidReturnMonths(
+  departMonth: string,
+  minStayDays: number | null,
+  maxStayDays: number | null,
+  availableReturnMonths: string[],
+): string[] {
+  if (!minStayDays && !maxStayDays) return availableReturnMonths;
+
+  const [depYear, depM] = departMonth.split("-").map(Number);
+  const departStart = new Date(Date.UTC(depYear, depM - 1, 1));
+  const departEnd = new Date(Date.UTC(depYear, depM, 0)); // Last day of month
+
+  return availableReturnMonths.filter((retMonth) => {
+    const [retYear, retM] = retMonth.split("-").map(Number);
+    const returnStart = new Date(Date.UTC(retYear, retM - 1, 1));
+    const returnEnd = new Date(Date.UTC(retYear, retM, 0)); // Last day of month
+
+    // Earliest possible return date (depart start + min stay)
+    const earliestReturn = minStayDays
+      ? new Date(departStart.getTime() + minStayDays * 86_400_000)
+      : departStart;
+
+    // Latest possible return date (depart end + max stay)
+    const latestReturn = maxStayDays
+      ? new Date(departEnd.getTime() + maxStayDays * 86_400_000)
+      : new Date(8640000000000000); // Far future
+
+    // Return month overlaps with [earliestReturn, latestReturn]
+    return returnEnd >= earliestReturn && returnStart <= latestReturn;
+  });
+}
+
+/** Fetch every matching offer for a watch using month-based searches (cached, minimal API calls). */
 async function collectOffers(watch: Watch): Promise<FlightOffer[]> {
   const provider = getProvider();
   const oneWay = watch.tripType === "ONE_WAY";
 
   // Extract months from date ranges
   const departMonths = monthsBetween(watch.departFrom, watch.departTo);
-  const returnMonths = oneWay || !watch.returnFrom ? [] : monthsBetween(watch.returnFrom, watch.returnTo!);
+  const allReturnMonths = oneWay || !watch.returnFrom ? [] : monthsBetween(watch.returnFrom, watch.returnTo!);
 
   console.log(`[collectOffers] Watch: ${watch.label ?? watch.id}`);
   console.log(`[collectOffers] Departure months: ${departMonths.join(", ")}`);
-  console.log(`[collectOffers] Return months: ${oneWay ? "N/A (one-way)" : returnMonths.join(", ")}`);
   console.log(`[collectOffers] Min stay: ${watch.minStayDays} days, Max stay: ${watch.maxStayDays} days`);
   console.log(`[collectOffers] Origins: ${watch.origins.join(", ")}, Destinations: ${watch.destinations.join(", ")}`);
+
+  // Cache: monthMatrix results by (origin, destination, month)
+  const cache = new Map<string, FlightOffer[]>();
+  const cacheKey = (o: string, d: string, m: string) => `${o}:${d}:${m}`;
 
   const all: FlightOffer[] = [];
 
   for (const origin of watch.origins) {
     for (const destination of watch.destinations) {
       for (const departMonth of departMonths) {
-        if (oneWay) {
-          // One-way: search by month
+        // Calculate valid return months for this departure month
+        const validReturnMonths = oneWay
+          ? [undefined]
+          : getValidReturnMonths(departMonth, watch.minStayDays, watch.maxStayDays, allReturnMonths);
+
+        if (!oneWay && validReturnMonths.length === 0) {
+          console.log(
+            `[collectOffers] Skipping ${origin}->${destination} ${departMonth}: no valid return months`,
+          );
+          continue;
+        }
+
+        // Fetch departure month (use cache if already fetched)
+        const key = cacheKey(origin, destination, departMonth);
+        let departOffers = cache.get(key);
+
+        if (!departOffers) {
           try {
-            console.log(`[collectOffers] Fetching one-way flights: ${origin}->${destination} in ${departMonth}`);
-            const offers = await provider.monthMatrix?.({
+            console.log(`[collectOffers] Fetching ${origin}->${destination} month ${departMonth}`);
+            departOffers = await provider.monthMatrix?.({
               origin,
               destination,
               month: departMonth,
-              oneWay: true,
+              oneWay,
               currency: watch.currency,
             }) || [];
-            all.push(...offers.filter((o) => matchesWatch(watch, o)));
+            cache.set(key, departOffers);
           } catch (err) {
             console.error(
               `[${watch.label ?? watch.id}] ${origin}->${destination} ${departMonth}:`,
               err instanceof Error ? err.message : err,
             );
+            departOffers = [];
           }
           await sleep(env.PROVIDER_REQUEST_DELAY_MS);
         } else {
-          // Round trip: search all departure days in month vs all return days in month(s)
-          for (const returnMonth of returnMonths) {
-            // Skip if return month is before departure month
-            if (returnMonth < departMonth) continue;
+          console.log(`[collectOffers] Using cached ${origin}->${destination} month ${departMonth}`);
+        }
 
-            try {
-              console.log(`[collectOffers] Fetching round-trip: ${origin}->${destination} ${departMonth} → ${returnMonth}`);
-              const offers = await provider.monthMatrix?.({
-                origin,
-                destination,
-                month: departMonth, // Depart in this month
-                oneWay: false,
-                currency: watch.currency,
-              }) || [];
+        // Filter offers to match watch criteria
+        for (const offer of departOffers) {
+          // Check if return date falls in any valid return month (if round-trip)
+          if (!oneWay) {
+            if (!offer.returnDate) continue;
+            const retMonth = ym(new Date(offer.returnDate + "T00:00:00Z"));
+            if (!validReturnMonths.includes(retMonth)) continue;
+          }
 
-              // Filter to offers that depart in departMonth and return in returnMonth with valid stay
-              const filtered = offers.filter((o) => {
-                if (o.departDate < ym(watch.departFrom) || o.departDate > ym(watch.departTo)) return false;
-                if (!o.returnDate) return false;
-                if (o.returnDate < ym(watch.returnFrom!) || o.returnDate > ym(watch.returnTo!)) return false;
-
-                // Check stay duration
-                const stay = daysBetween(o.departDate, o.returnDate);
-                if (watch.minStayDays && stay < watch.minStayDays) return false;
-                if (watch.maxStayDays && stay > watch.maxStayDays) return false;
-
-                return matchesWatch(watch, o);
-              });
-
-              all.push(...filtered);
-            } catch (err) {
-              console.error(
-                `[${watch.label ?? watch.id}] ${origin}->${destination} ${departMonth}->${returnMonth}:`,
-                err instanceof Error ? err.message : err,
-              );
-            }
-            await sleep(env.PROVIDER_REQUEST_DELAY_MS);
+          // Check all other watch criteria
+          if (matchesWatch(watch, offer)) {
+            all.push(offer);
           }
         }
       }
     }
   }
+
+  console.log(
+    `[collectOffers] Done: ${all.length} matching offers from ${cache.size} API calls`,
+  );
   return all;
 }
 
