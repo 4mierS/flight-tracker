@@ -32,23 +32,51 @@ function daysBetween(a: string, b: string): number {
 
 /** Does an offer satisfy this watch's hard criteria? */
 function matchesWatch(watch: Watch, o: FlightOffer): boolean {
-  if (o.departDate < ymd(watch.departFrom) || o.departDate > ymd(watch.departTo))
+  const departYmd = ymd(watch.departFrom);
+  const departToYmd = ymd(watch.departTo);
+
+  if (o.departDate < departYmd || o.departDate > departToYmd) {
+    console.log(`[matchesWatch] REJECT depart date: offer=${o.departDate}, range=${departYmd}..${departToYmd}`);
     return false;
-  if (o.stops > watch.maxStops) return false;
-  if (watch.directOnly && o.stops !== 0) return false;
+  }
+
+  if (o.stops > watch.maxStops) {
+    console.log(`[matchesWatch] REJECT stops: offer=${o.stops}, max=${watch.maxStops}`);
+    return false;
+  }
+
+  if (watch.directOnly && o.stops !== 0) {
+    console.log(`[matchesWatch] REJECT directOnly: offer stops=${o.stops}`);
+    return false;
+  }
 
   if (watch.tripType === "RETURN") {
-    if (!o.returnDate) return false;
-    if (
-      watch.returnFrom &&
-      (o.returnDate < ymd(watch.returnFrom) || o.returnDate > ymd(watch.returnTo!))
-    )
+    if (!o.returnDate) {
+      console.log(`[matchesWatch] REJECT no return date`);
       return false;
-    if (watch.minStayDays && daysBetween(o.departDate, o.returnDate) < watch.minStayDays)
+    }
+
+    const returnFromYmd = ymd(watch.returnFrom!);
+    const returnToYmd = ymd(watch.returnTo!);
+
+    if (o.returnDate < returnFromYmd || o.returnDate > returnToYmd) {
+      console.log(`[matchesWatch] REJECT return date: offer=${o.returnDate}, range=${returnFromYmd}..${returnToYmd}`);
       return false;
-    if (watch.maxStayDays && daysBetween(o.departDate, o.returnDate) > watch.maxStayDays)
+    }
+
+    const stay = daysBetween(o.departDate, o.returnDate);
+    if (watch.minStayDays && stay < watch.minStayDays) {
+      console.log(`[matchesWatch] REJECT min stay: offer stay=${stay} days, min=${watch.minStayDays}`);
       return false;
+    }
+
+    if (watch.maxStayDays && stay > watch.maxStayDays) {
+      console.log(`[matchesWatch] REJECT max stay: offer stay=${stay} days, max=${watch.maxStayDays}`);
+      return false;
+    }
   }
+
+  console.log(`[matchesWatch] ACCEPT ${o.origin}->${o.destination} ${o.departDate}/${o.returnDate}`);
   return true;
 }
 
@@ -132,6 +160,7 @@ async function collectOffers(watch: Watch): Promise<FlightOffer[]> {
                 destination,
                 month: departMonth,
                 oneWay: true,
+                directOnly: watch.directOnly,
                 currency: watch.currency,
               }) || [];
               cache.set(key, departOffers);
@@ -180,6 +209,7 @@ async function collectOffers(watch: Watch): Promise<FlightOffer[]> {
                 destination,
                 month: departMonth,
                 oneWay: false,
+                directOnly: watch.directOnly,
                 currency: watch.currency,
               }) || [];
               cache.set(key, departOffers);

@@ -151,13 +151,14 @@ export class TravelpayoutsProvider implements FlightDataProvider {
 
   /** v2: cheapest price per day across a month (number_of_changes + value). */
   async monthMatrix(q: MonthMatrixQuery): Promise<FlightOffer[]> {
-    console.log(`[monthMatrix] Query: ${q.origin} → ${q.destination}, month: ${q.month}, oneWay: ${q.oneWay}`);
+    console.log(`[monthMatrix] Query: ${q.origin} → ${q.destination}, month: ${q.month}, oneWay: ${q.oneWay}, directOnly: ${q.directOnly}`);
 
     const rows = await this.get<ValueRow[]>("/v2/prices/month-matrix", {
       origin: q.origin,
       destination: q.destination,
       month: q.month,
       one_way: q.oneWay,
+      direct: q.directOnly,
       currency: q.currency.toLowerCase(),
       show_to_affiliates: true,
       limit: 31,

@@ -54,6 +54,7 @@ export interface MonthMatrixQuery {
   /** YYYY-MM-DD, first day of the month. */
   month: string;
   oneWay: boolean;
+  directOnly?: boolean;
   currency: string;
 }
 
