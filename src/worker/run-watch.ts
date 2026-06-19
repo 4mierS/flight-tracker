@@ -52,71 +52,48 @@ function matchesWatch(watch: Watch, o: FlightOffer): boolean {
   return true;
 }
 
-/** Fetch every matching offer for a watch across all origin/destination/month combos. */
+/** Generate all dates in a range (inclusive). */
+function dateRange(from: Date, to: Date): string[] {
+  const dates: string[] = [];
+  const current = new Date(from);
+  while (current <= to) {
+    dates.push(ymd(current));
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+/** Fetch every matching offer for a watch across all origin/destination/date combos. */
 async function collectOffers(watch: Watch): Promise<FlightOffer[]> {
   const provider = getProvider();
   const oneWay = watch.tripType === "ONE_WAY";
 
-  // Build departure dates: use actual dates from watch, not just months
-  const departDates: string[] = [];
-  const departMonths = monthsBetween(watch.departFrom, watch.departTo);
-  for (let i = 0; i < departMonths.length; i++) {
-    const month = departMonths[i];
-    const isFirst = i === 0;
-    const isLast = i === departMonths.length - 1;
+  // All departure dates in the range
+  const departDates = dateRange(watch.departFrom, watch.departTo);
 
-    if (isFirst) {
-      // First month: use actual departFrom date
-      departDates.push(ymd(watch.departFrom));
-    } else if (isLast) {
-      // Last month: use actual departureTo date
-      departDates.push(ymd(watch.departTo));
-    } else {
-      // Middle months: use first day of month
-      departDates.push(`${month}-01`);
-    }
-  }
+  // All return dates in the range (or empty for one-way)
+  const allReturnDates = oneWay || !watch.returnFrom ? [] : dateRange(watch.returnFrom, watch.returnTo!);
 
-  // Build return dates: use actual dates from watch, not just months
-  const returnDates: string[] | [undefined] = oneWay || !watch.returnFrom
-    ? [undefined]
-    : (() => {
-        const dates: string[] = [];
-        const returnMonths = monthsBetween(watch.returnFrom, watch.returnTo!);
-        for (let i = 0; i < returnMonths.length; i++) {
-          const month = returnMonths[i];
-          const isFirst = i === 0;
-          const isLast = i === returnMonths.length - 1;
-
-          if (isFirst) {
-            // First month: use actual returnFrom date
-            dates.push(ymd(watch.returnFrom));
-          } else if (isLast) {
-            // Last month: use actual returnTo date
-            dates.push(ymd(watch.returnTo!));
-          } else {
-            // Middle months: use first day of month
-            dates.push(`${month}-01`);
-          }
-        }
-        return dates;
-      })();
+  console.log(`[collectOffers] Watch: ${watch.label ?? watch.id}`);
+  console.log(`[collectOffers] Departure dates: ${departDates.length} dates (${ymd(watch.departFrom)} to ${ymd(watch.departTo)})`);
+  console.log(`[collectOffers] Return dates: ${allReturnDates.length} dates (${ymd(watch.returnFrom)} to ${ymd(watch.returnTo!)})`);
+  console.log(`[collectOffers] Min stay: ${watch.minStayDays} days, Max stay: ${watch.maxStayDays} days`);
+  console.log(`[collectOffers] Origins: ${watch.origins.join(", ")}, Destinations: ${watch.destinations.join(", ")}`);
 
   const all: FlightOffer[] = [];
 
   for (const origin of watch.origins) {
     for (const destination of watch.destinations) {
       for (const departureAt of departDates) {
-        for (const returnAt of returnDates) {
-          // Skip impossible combos: return before departure
-          if (returnAt && returnAt < departureAt) continue;
+        if (oneWay) {
+          // One-way: just search without return date
           try {
             const offers = await provider.searchOffers({
               origin,
               destination,
               departureAt,
-              returnAt,
-              oneWay,
+              returnAt: undefined,
+              oneWay: true,
               directOnly: watch.directOnly,
               currency: watch.currency,
             });
@@ -128,6 +105,34 @@ async function collectOffers(watch: Watch): Promise<FlightOffer[]> {
             );
           }
           await sleep(env.PROVIDER_REQUEST_DELAY_MS);
+        } else {
+          // Round trip: generate valid return dates based on min/max stay
+          for (const returnAt of allReturnDates) {
+            const stay = daysBetween(departureAt, returnAt);
+
+            // Skip if stay duration is outside min/max bounds
+            if (watch.minStayDays && stay < watch.minStayDays) continue;
+            if (watch.maxStayDays && stay > watch.maxStayDays) continue;
+
+            try {
+              const offers = await provider.searchOffers({
+                origin,
+                destination,
+                departureAt,
+                returnAt,
+                oneWay: false,
+                directOnly: watch.directOnly,
+                currency: watch.currency,
+              });
+              all.push(...offers.filter((o) => matchesWatch(watch, o)));
+            } catch (err) {
+              console.error(
+                `[${watch.label ?? watch.id}] ${origin}->${destination} ${departureAt}->${returnAt}:`,
+                err instanceof Error ? err.message : err,
+              );
+            }
+            await sleep(env.PROVIDER_REQUEST_DELAY_MS);
+          }
         }
       }
     }

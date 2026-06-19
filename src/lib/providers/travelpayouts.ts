@@ -77,6 +77,10 @@ export class TravelpayoutsProvider implements FlightDataProvider {
     }
     if (this.market) url.searchParams.set("market", this.market);
 
+    console.log(`[Travelpayouts API] GET ${path}`);
+    console.log(`[Travelpayouts API] URL: ${url.toString()}`);
+    console.log(`[Travelpayouts API] Params:`, params);
+
     const res = await fetch(url, {
       headers: {
         "X-Access-Token": this.token,
@@ -84,7 +88,11 @@ export class TravelpayoutsProvider implements FlightDataProvider {
       },
     });
 
+    console.log(`[Travelpayouts API] Response status: ${res.status} ${res.statusText}`);
+
     if (!res.ok) {
+      const text = await res.text();
+      console.log(`[Travelpayouts API] Error body:`, text);
       throw new Error(
         `Travelpayouts ${path} -> HTTP ${res.status} ${res.statusText}`,
       );
@@ -92,8 +100,10 @@ export class TravelpayoutsProvider implements FlightDataProvider {
 
     const body = (await res.json()) as Envelope<T>;
     if (!body.success) {
+      console.log(`[Travelpayouts API] API error:`, body.error);
       throw new Error(`Travelpayouts ${path} -> ${body.error ?? "unknown error"}`);
     }
+    console.log(`[Travelpayouts API] Success, returned ${(body.data as any[])?.length ?? 0} items`);
     return body.data;
   }
 
@@ -102,6 +112,9 @@ export class TravelpayoutsProvider implements FlightDataProvider {
     // Dates are already passed as YYYY-MM-DD from collectOffers
     const departureAt = q.departureAt;
     const returnAt = q.returnAt;
+
+    console.log(`[searchOffers] Query: ${q.origin} -> ${q.destination}`);
+    console.log(`[searchOffers] Departure: ${departureAt}, Return: ${returnAt}, OneWay: ${q.oneWay}`);
 
     const rows = await this.get<PricesForDatesRow[]>(
       "/aviasales/v3/prices_for_dates",
