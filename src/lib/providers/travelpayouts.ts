@@ -99,28 +99,9 @@ export class TravelpayoutsProvider implements FlightDataProvider {
 
   /** v1 workhorse: cheapest offers for one route over a departure window. */
   async searchOffers(q: OfferQuery): Promise<FlightOffer[]> {
-    // Convert YYYY-MM (month) to YYYY-MM-DD for API compatibility.
-    // For one-way: use first day of month.
-    // For round trips in same month: use first day for departure, last day for return.
-    let departureAt = q.departureAt;
-    let returnAt = q.returnAt;
-
-    if (departureAt.length === 7) {
-      departureAt = `${departureAt}-01`;
-    }
-
-    if (returnAt && returnAt.length === 7) {
-      // Same month as departure: use last day of the month (28/29/30/31)
-      if (returnAt === q.departureAt) {
-        const date = new Date(`${returnAt}-01`);
-        date.setUTCMonth(date.getUTCMonth() + 1);
-        date.setUTCDate(0); // Last day of previous month
-        returnAt = date.toISOString().split('T')[0];
-      } else {
-        // Different month: use first day
-        returnAt = `${returnAt}-01`;
-      }
-    }
+    // Dates are already passed as YYYY-MM-DD from collectOffers
+    const departureAt = q.departureAt;
+    const returnAt = q.returnAt;
 
     const rows = await this.get<PricesForDatesRow[]>(
       "/aviasales/v3/prices_for_dates",

@@ -56,21 +56,59 @@ function matchesWatch(watch: Watch, o: FlightOffer): boolean {
 async function collectOffers(watch: Watch): Promise<FlightOffer[]> {
   const provider = getProvider();
   const oneWay = watch.tripType === "ONE_WAY";
+
+  // Build departure dates: use actual dates from watch, not just months
+  const departDates: string[] = [];
   const departMonths = monthsBetween(watch.departFrom, watch.departTo);
-  const returnMonths =
-    !oneWay && watch.returnFrom
-      ? monthsBetween(watch.returnFrom, watch.returnTo!)
-      : [undefined];
+  for (let i = 0; i < departMonths.length; i++) {
+    const month = departMonths[i];
+    const isFirst = i === 0;
+    const isLast = i === departMonths.length - 1;
+
+    if (isFirst) {
+      // First month: use actual departFrom date
+      departDates.push(ymd(watch.departFrom));
+    } else if (isLast) {
+      // Last month: use actual departureTo date
+      departDates.push(ymd(watch.departTo));
+    } else {
+      // Middle months: use first day of month
+      departDates.push(`${month}-01`);
+    }
+  }
+
+  // Build return dates: use actual dates from watch, not just months
+  const returnDates: string[] | [undefined] = oneWay || !watch.returnFrom
+    ? [undefined]
+    : (() => {
+        const dates: string[] = [];
+        const returnMonths = monthsBetween(watch.returnFrom, watch.returnTo!);
+        for (let i = 0; i < returnMonths.length; i++) {
+          const month = returnMonths[i];
+          const isFirst = i === 0;
+          const isLast = i === returnMonths.length - 1;
+
+          if (isFirst) {
+            // First month: use actual returnFrom date
+            dates.push(ymd(watch.returnFrom));
+          } else if (isLast) {
+            // Last month: use actual returnTo date
+            dates.push(ymd(watch.returnTo!));
+          } else {
+            // Middle months: use first day of month
+            dates.push(`${month}-01`);
+          }
+        }
+        return dates;
+      })();
 
   const all: FlightOffer[] = [];
 
   for (const origin of watch.origins) {
     for (const destination of watch.destinations) {
-      for (const departureAt of departMonths) {
-        for (const returnAt of returnMonths) {
-          // Skip impossible combos: a return month before the departure month
-          // is rejected by the API (HTTP 400) and wastes a rate-limited call.
-          // "YYYY-MM" strings compare correctly lexicographically.
+      for (const departureAt of departDates) {
+        for (const returnAt of returnDates) {
+          // Skip impossible combos: return before departure
           if (returnAt && returnAt < departureAt) continue;
           try {
             const offers = await provider.searchOffers({
