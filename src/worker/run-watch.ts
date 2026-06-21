@@ -5,24 +5,12 @@ import type { FlightOffer } from "../lib/providers/types";
 import { sendDealAlert } from "../lib/notify/telegram";
 import { canSendNow, loadDailyCapState, type DailyCapState } from "./daily-cap";
 import { collectDealsPerDay } from "./collect-by-day";
+import { enumerateTrips } from "./enumerate-trips";
 import type { Watch } from "@prisma/client";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
-const ym = (d: Date) => d.toISOString().slice(0, 7);
-
-/** Distinct year-months ("YYYY-MM") spanned by [from, to] inclusive. */
-function monthsBetween(from: Date, to: Date): string[] {
-  const out: string[] = [];
-  const cur = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1));
-  const end = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), 1));
-  while (cur <= end) {
-    out.push(ym(cur));
-    cur.setUTCMonth(cur.getUTCMonth() + 1);
-  }
-  return out;
-}
 
 function daysBetween(a: string, b: string): number {
   return Math.round(
@@ -48,99 +36,66 @@ function matchesWatch(watch: Watch, o: FlightOffer): boolean {
   return true;
 }
 
-/** Fetch every matching offer for a watch using month-based searches (more efficient). */
+/** Fetch every matching offer for a watch by enumerating all valid trips first. */
 async function collectOffers(watch: Watch): Promise<FlightOffer[]> {
   const provider = getProvider();
   const oneWay = watch.tripType === "ONE_WAY";
 
-  // Extract months from date ranges
-  const departMonths = monthsBetween(watch.departFrom, watch.departTo);
-  const returnMonths = oneWay ? [] : (watch.returnFrom ? monthsBetween(watch.returnFrom, watch.returnTo!) : []);
+  // Enumerate all valid trips based on watch constraints
+  const validTrips = enumerateTrips(watch);
 
   console.log(`[collectOffers] Watch: ${watch.label ?? watch.id}`);
-  console.log(`[collectOffers] Departure months: ${departMonths.join(", ")}`);
-  console.log(`[collectOffers] Return months: ${oneWay ? "N/A (one-way)" : returnMonths.join(", ")}`);
+  console.log(`[collectOffers] Valid trips enumerated: ${validTrips.length}`);
   console.log(`[collectOffers] Min stay: ${watch.minStayDays} days, Max stay: ${watch.maxStayDays} days`);
   console.log(`[collectOffers] Origins: ${watch.origins.join(", ")}, Destinations: ${watch.destinations.join(", ")}`);
 
   const all: FlightOffer[] = [];
 
-  for (const origin of watch.origins) {
-    for (const destination of watch.destinations) {
-      for (const departMonth of departMonths) {
-        if (oneWay) {
-          // One-way: search by month using pricesForDates endpoint
-          try {
-            console.log(`[collectOffers] Fetching one-way flights: ${origin}->${destination} in ${departMonth}`);
-            const offers = await provider.pricesForDates?.({
-              origin,
-              destination,
-              departureAt: departMonth, // Month format: YYYY-MM
-              oneWay: true,
-              direct: watch.directOnly,
-              currency: watch.currency,
-              sorting: "price",
-              limit: 100,
-            }) || [];
-            all.push(...offers.filter((o) => matchesWatch(watch, o)));
-          } catch (err) {
-            console.error(
-              `[${watch.label ?? watch.id}] ${origin}->${destination} ${departMonth}:`,
-              err instanceof Error ? err.message : err,
-            );
-          }
-          await sleep(env.PROVIDER_REQUEST_DELAY_MS);
-        } else {
-          // Round trip: search departure month vs return month using pricesForDates endpoint
-          for (const returnMonth of returnMonths) {
-            // Skip if return month is before departure month
-            if (returnMonth < departMonth) continue;
+  // Query each valid trip
+  for (const trip of validTrips) {
+    const routeLabel = `${trip.origin}->${trip.destination}`;
 
-            try {
-              console.log(`[collectOffers] Fetching round-trip: ${origin}->${destination} ${departMonth} → ${returnMonth}`);
-              const offers = await provider.pricesForDates?.({
-                origin,
-                destination,
-                departureAt: departMonth, // Month format: YYYY-MM
-                returnAt: returnMonth, // Month format: YYYY-MM
-                oneWay: false,
-                direct: watch.directOnly,
-                currency: watch.currency,
-                sorting: "price",
-                limit: 100,
-              }) || [];
-
-              // Filter to offers with valid depart/return dates and stay duration
-              const filtered = offers.filter((o) => {
-                if (o.departDate < ymd(watch.departFrom) || o.departDate > ymd(watch.departTo)) return false;
-                if (!o.returnDate) return false;
-                if (
-                  watch.returnFrom &&
-                  (o.returnDate < ymd(watch.returnFrom) || o.returnDate > ymd(watch.returnTo!))
-                )
-                  return false;
-
-                // Check stay duration
-                const stay = daysBetween(o.departDate, o.returnDate);
-                if (watch.minStayDays && stay < watch.minStayDays) return false;
-                if (watch.maxStayDays && stay > watch.maxStayDays) return false;
-
-                return matchesWatch(watch, o);
-              });
-
-              all.push(...filtered);
-            } catch (err) {
-              console.error(
-                `[${watch.label ?? watch.id}] ${origin}->${destination} ${departMonth}->${returnMonth}:`,
-                err instanceof Error ? err.message : err,
-              );
-            }
-            await sleep(env.PROVIDER_REQUEST_DELAY_MS);
-          }
-        }
+    try {
+      if (oneWay) {
+        console.log(`[collectOffers] Fetching one-way: ${routeLabel} on ${trip.departDate}`);
+        const offers = await provider.pricesForDates?.({
+          origin: trip.origin,
+          destination: trip.destination,
+          departureAt: trip.departDate,
+          oneWay: true,
+          direct: watch.directOnly,
+          currency: watch.currency,
+          sorting: "price",
+          limit: 100,
+        }) || [];
+        all.push(...offers.filter((o) => matchesWatch(watch, o)));
+      } else {
+        const returnDate = trip.returnDate!;
+        console.log(
+          `[collectOffers] Fetching round-trip: ${routeLabel} ${trip.departDate} → ${returnDate}`,
+        );
+        const offers = await provider.pricesForDates?.({
+          origin: trip.origin,
+          destination: trip.destination,
+          departureAt: trip.departDate,
+          returnAt: returnDate,
+          oneWay: false,
+          direct: watch.directOnly,
+          currency: watch.currency,
+          sorting: "price",
+          limit: 100,
+        }) || [];
+        all.push(...offers.filter((o) => matchesWatch(watch, o)));
       }
+    } catch (err) {
+      console.error(
+        `[${watch.label ?? watch.id}] ${routeLabel} ${trip.departDate}${trip.returnDate ? ` → ${trip.returnDate}` : ""}:`,
+        err instanceof Error ? err.message : err,
+      );
     }
+    await sleep(env.PROVIDER_REQUEST_DELAY_MS);
   }
+
   return all;
 }
 
