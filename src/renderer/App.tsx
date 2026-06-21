@@ -4,17 +4,28 @@ import { WatchList } from "./components/WatchList";
 import { WatchEditor } from "./components/WatchEditor";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { WorkerControl } from "./components/WorkerControl";
+import { DailyDealsView } from "./components/DailyDealsView";
+import type { FlightOffer } from "../lib/providers/types";
+
+interface DailyDeal {
+  stops: number;
+  stopsLabel: string;
+  deals: FlightOffer[];
+}
 
 type View =
   | { name: "list" }
   | { name: "create" }
   | { name: "edit"; watch: WatchDTO }
-  | { name: "settings" };
+  | { name: "settings" }
+  | { name: "deals" };
 
 export function App() {
   const [view, setView] = useState<View>({ name: "list" });
   const [watches, setWatches] = useState<WatchDTO[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dailyDeals, setDailyDeals] = useState<DailyDeal[]>([]);
+  const [dealsLoading, setDealsLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     const res = await window.api.watches.list();
@@ -48,6 +59,12 @@ export function App() {
             onClick={goList}
           >
             Watches
+          </button>
+          <button
+            className={view.name === "deals" ? "nav-link active" : "nav-link"}
+            onClick={() => setView({ name: "deals" })}
+          >
+            💰 Best Deals
           </button>
           <button
             className={view.name === "settings" ? "nav-link active" : "nav-link"}
@@ -94,6 +111,16 @@ export function App() {
         )}
 
         {view.name === "settings" && <SettingsPanel onClose={goList} />}
+
+        {view.name === "deals" && (
+          <div className="deals-section">
+            <div className="section-header">
+              <h1>Best Flight Deals</h1>
+              <p>Top 2 cheapest flights for each route (nonstop & one-stop)</p>
+            </div>
+            <DailyDealsView deals={dailyDeals} loading={dealsLoading} />
+          </div>
+        )}
       </main>
     </div>
   );

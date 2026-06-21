@@ -68,12 +68,32 @@ export interface NearbyQuery {
   limit?: number;
 }
 
+/** Direct prices_for_dates endpoint with raw API control. */
+export interface PricesForDatesQuery {
+  origin: string;
+  destination: string;
+  /** YYYY-MM or YYYY-MM-DD */
+  departureAt: string;
+  /** YYYY-MM or YYYY-MM-DD (optional for one-way) */
+  returnAt?: string;
+  oneWay: boolean;
+  /** 0 = direct only, 1+ = allow transfers */
+  direct: boolean;
+  currency: string;
+  sorting?: "price" | "route" | "duration";
+  limit?: number;
+  page?: number;
+}
+
 export interface FlightDataProvider {
   /** Stable identifier stored alongside data, e.g. "travelpayouts". */
   readonly name: string;
 
   /** v1 — required. */
   searchOffers(query: OfferQuery): Promise<FlightOffer[]>;
+
+  /** Direct prices_for_dates endpoint access with full control. */
+  pricesForDates?(query: PricesForDatesQuery): Promise<FlightOffer[]>;
 
   /** v2 — optional; implement when you build the sweep / nearby features. */
   monthMatrix?(query: MonthMatrixQuery): Promise<FlightOffer[]>;
