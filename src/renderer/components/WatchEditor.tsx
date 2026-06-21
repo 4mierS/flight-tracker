@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { WatchDTO } from "../../desktop/shared";
 import { watchInputSchema } from "../../lib/validation/watch";
 import {
@@ -6,6 +6,7 @@ import {
   formFromDTO,
   formToInput,
   shiftReturnWindow,
+  updateStayDays,
   type WatchFormState,
 } from "../lib/form";
 
@@ -25,8 +26,25 @@ export function WatchEditor(props: Props) {
 
   const isReturn = form.tripType === "RETURN";
 
+  // Ensure return dates are calculated correctly for stay-based mode
+  useEffect(() => {
+    if (isReturn && form.returnMode === "stay-based") {
+      setForm((f) => updateStayDays(f, f.minStayDays, f.maxStayDays));
+    }
+  }, [form.departFrom, form.departTo, isReturn, form.returnMode]);
+
   function set<K extends keyof WatchFormState>(key: K, value: WatchFormState[K]) {
-    setForm((f) => ({ ...f, [key]: value }));
+    if (key === "returnMode" && form.tripType === "RETURN") {
+      // When switching to stay-based mode, recalculate return dates
+      setForm((f) => {
+        if (value === "stay-based") {
+          return updateStayDays(f, f.minStayDays, f.maxStayDays);
+        }
+        return { ...f, [key]: value };
+      });
+    } else {
+      setForm((f) => ({ ...f, [key]: value }));
+    }
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -151,48 +169,87 @@ export function WatchEditor(props: Props) {
 
         {isReturn && (
           <fieldset className="group">
-            <legend>Return window</legend>
-            <div className="field-row">
-              <label className="field">
-                <span>From</span>
+            <legend>Return settings</legend>
+            <div className="field-row checks">
+              <label className="check">
                 <input
-                  type="date"
-                  value={form.returnFrom}
-                  onChange={(e) => set("returnFrom", e.target.value)}
+                  type="radio"
+                  name="returnMode"
+                  value="stay-based"
+                  checked={form.returnMode === "stay-based"}
+                  onChange={() => set("returnMode", "stay-based")}
                 />
-                {err("returnFrom")}
+                <span>Calculate from stay duration</span>
               </label>
-              <label className="field">
-                <span>To</span>
+              <label className="check">
                 <input
-                  type="date"
-                  value={form.returnTo}
-                  onChange={(e) => set("returnTo", e.target.value)}
+                  type="radio"
+                  name="returnMode"
+                  value="date-based"
+                  checked={form.returnMode === "date-based"}
+                  onChange={() => set("returnMode", "date-based")}
                 />
-                {err("returnTo")}
-              </label>
-              <label className="field">
-                <span>Min stay (days)</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={form.minStayDays}
-                  onChange={(e) => set("minStayDays", e.target.value)}
-                />
-                {err("minStayDays")}
-              </label>
-              <label className="field">
-                <span>Max stay (days)</span>
-                <input
-                  type="number"
-                  min={0}
-                  placeholder="optional"
-                  value={form.maxStayDays}
-                  onChange={(e) => set("maxStayDays", e.target.value)}
-                />
-                {err("maxStayDays")}
+                <span>Enter return dates manually</span>
               </label>
             </div>
+
+            {form.returnMode === "stay-based" ? (
+              <div className="field-row">
+                <label className="field">
+                  <span>Min stay (days)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.minStayDays}
+                    onChange={(e) =>
+                      setForm((f) =>
+                        updateStayDays(f, e.target.value, f.maxStayDays),
+                      )
+                    }
+                  />
+                  {err("minStayDays")}
+                </label>
+                <label className="field">
+                  <span>Max stay (days)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="optional"
+                    value={form.maxStayDays}
+                    onChange={(e) =>
+                      setForm((f) =>
+                        updateStayDays(f, f.minStayDays, e.target.value),
+                      )
+                    }
+                  />
+                  {err("maxStayDays")}
+                </label>
+                <div className="field" style={{ opacity: 0.6, pointerEvents: "none" }}>
+                  <span>Return: {form.returnFrom} to {form.returnTo}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="field-row">
+                <label className="field">
+                  <span>Return from</span>
+                  <input
+                    type="date"
+                    value={form.returnFrom}
+                    onChange={(e) => set("returnFrom", e.target.value)}
+                  />
+                  {err("returnFrom")}
+                </label>
+                <label className="field">
+                  <span>Return to</span>
+                  <input
+                    type="date"
+                    value={form.returnTo}
+                    onChange={(e) => set("returnTo", e.target.value)}
+                  />
+                  {err("returnTo")}
+                </label>
+              </div>
+            )}
           </fieldset>
         )}
 
