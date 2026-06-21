@@ -4,6 +4,7 @@ import {
   formFromDTO,
   formToInput,
   shiftReturnWindow,
+  updateStayDays,
   type WatchFormState,
 } from "./form";
 import { watchInputSchema } from "../../lib/validation/watch";
@@ -20,6 +21,7 @@ const filledForm: WatchFormState = {
   returnTo: "2026-09-30",
   minStayDays: "7",
   maxStayDays: "",
+  returnMode: "stay-based",
   maxStops: "0",
   directOnly: true,
   passengers: "1",
@@ -71,14 +73,14 @@ describe("emptyForm", () => {
 });
 
 describe("shiftReturnWindow", () => {
-  it("sets returnFrom to departFrom + minStay and preserves window width", () => {
-    // Original return window is 99 days wide (06-23 .. 09-30).
+  it("sets returnFrom to departFrom + minStay and returnTo to departTo + maxStay", () => {
+    // departFrom: 2026-06-16, departTo: 2026-09-16, minStay: 7, maxStay: 0
     const next = shiftReturnWindow(filledForm, "2026-07-01");
     expect(next.departFrom).toBe("2026-07-01");
-    // 2026-07-01 + 7 days
+    // 2026-07-01 + 7 days = 2026-07-08
     expect(next.returnFrom).toBe("2026-07-08");
-    // width preserved: 2026-09-30 - 2026-06-23 = 99 days => 07-08 + 99
-    expect(next.returnTo).toBe("2026-10-15");
+    // departTo is still 2026-09-16 + 0 days = 2026-09-16
+    expect(next.returnTo).toBe("2026-09-16");
   });
 
   it("treats a blank min stay as zero", () => {
@@ -86,31 +88,22 @@ describe("shiftReturnWindow", () => {
     expect(next.returnFrom).toBe("2026-07-01");
   });
 
-  it("collapses the window to a single day when return dates are blank", () => {
-    const next = shiftReturnWindow(
-      { ...filledForm, returnFrom: "", returnTo: "" },
-      "2026-07-01",
-    );
-    expect(next.returnFrom).toBe("2026-07-08");
-    expect(next.returnTo).toBe("2026-07-08");
-  });
-
-  it("sets returnTo to departFrom + maxStay when a max stay is configured", () => {
+  it("sets returnFrom to departFrom + minStay and returnTo to departTo + maxStay", () => {
     const next = shiftReturnWindow(
       { ...filledForm, minStayDays: "7", maxStayDays: "21" },
       "2026-07-01",
     );
-    expect(next.returnFrom).toBe("2026-07-08"); // +7 min
-    expect(next.returnTo).toBe("2026-07-22"); // +21 max
+    expect(next.returnFrom).toBe("2026-07-08"); // 2026-07-01 + 7 days
+    expect(next.returnTo).toBe("2026-10-07"); // 2026-09-16 + 21 days
   });
 
-  it("clamps returnTo to returnFrom when maxStay is below minStay", () => {
+  it("uses zero for maxStay when not configured", () => {
     const next = shiftReturnWindow(
-      { ...filledForm, minStayDays: "10", maxStayDays: "3" },
+      { ...filledForm, minStayDays: "10", maxStayDays: "" },
       "2026-07-01",
     );
-    expect(next.returnFrom).toBe("2026-07-11");
-    expect(next.returnTo).toBe("2026-07-11");
+    expect(next.returnFrom).toBe("2026-07-11"); // 2026-07-01 + 10
+    expect(next.returnTo).toBe("2026-09-16"); // 2026-09-16 + 0
   });
 
   it("leaves return fields untouched for ONE_WAY", () => {
@@ -121,9 +114,52 @@ describe("shiftReturnWindow", () => {
     expect(next.returnTo).toBe(filledForm.returnTo);
   });
 
+  it("does not recalculate in date-based mode", () => {
+    const dateBased = { ...filledForm, returnMode: "date-based" as const };
+    const next = shiftReturnWindow(dateBased, "2026-07-01");
+    expect(next.returnFrom).toBe(filledForm.returnFrom);
+    expect(next.returnTo).toBe(filledForm.returnTo);
+  });
+
   it("produces a schema-valid RETURN watch", () => {
     const next = shiftReturnWindow(filledForm, "2026-07-01");
     expect(watchInputSchema.safeParse(formToInput(next)).success).toBe(true);
+  });
+
+  it("matches user scenario: 07/20-08/30 with 13-19 days stay", () => {
+    // User's case: depart 2026-07-20 to 2026-08-30, min 13, max 19
+    const form: WatchFormState = {
+      ...filledForm,
+      departFrom: "2026-07-20",
+      departTo: "2026-08-30",
+      minStayDays: "13",
+      maxStayDays: "19",
+    };
+    const next = updateStayDays(form, "13", "19");
+    // returnFrom should be 2026-07-20 + 13 = 2026-08-02
+    expect(next.returnFrom).toBe("2026-08-02");
+    // returnTo should be 2026-08-30 + 19 = 2026-09-18
+    expect(next.returnTo).toBe("2026-09-18");
+  });
+});
+
+describe("updateStayDays", () => {
+  it("recalculates return dates when stay days change in stay-based mode", () => {
+    // departFrom: 2026-06-16, departTo: 2026-09-16
+    const next = updateStayDays(filledForm, "14", "30");
+    expect(next.minStayDays).toBe("14");
+    expect(next.maxStayDays).toBe("30");
+    // 2026-06-16 + 14 days = 2026-06-30
+    expect(next.returnFrom).toBe("2026-06-30");
+    // 2026-09-16 + 30 days = 2026-10-16
+    expect(next.returnTo).toBe("2026-10-16");
+  });
+
+  it("does not recalculate in date-based mode", () => {
+    const dateBased = { ...filledForm, returnMode: "date-based" as const };
+    const next = updateStayDays(dateBased, "14", "30");
+    expect(next.returnFrom).toBe(filledForm.returnFrom);
+    expect(next.returnTo).toBe(filledForm.returnTo);
   });
 });
 
