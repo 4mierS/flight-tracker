@@ -4,6 +4,7 @@ import { getProvider } from "../lib/providers";
 import type { FlightOffer } from "../lib/providers/types";
 import { sendDealAlert } from "../lib/notify/telegram";
 import { canSendNow, loadDailyCapState, type DailyCapState } from "./daily-cap";
+import { collectDealsPerDay } from "./collect-by-day";
 import type { Watch } from "@prisma/client";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -68,18 +69,19 @@ async function collectOffers(watch: Watch): Promise<FlightOffer[]> {
     for (const destination of watch.destinations) {
       for (const departMonth of departMonths) {
         if (oneWay) {
-          // One-way: search by month using prices_for_dates endpoint
+          // One-way: search by month using pricesForDates endpoint
           try {
             console.log(`[collectOffers] Fetching one-way flights: ${origin}->${destination} in ${departMonth}`);
-            const offers = await provider.searchOffers({
+            const offers = await provider.pricesForDates?.({
               origin,
               destination,
               departureAt: departMonth, // Month format: YYYY-MM
               oneWay: true,
-              directOnly: watch.directOnly,
+              direct: watch.directOnly,
               currency: watch.currency,
+              sorting: "price",
               limit: 100,
-            });
+            }) || [];
             all.push(...offers.filter((o) => matchesWatch(watch, o)));
           } catch (err) {
             console.error(
@@ -89,23 +91,24 @@ async function collectOffers(watch: Watch): Promise<FlightOffer[]> {
           }
           await sleep(env.PROVIDER_REQUEST_DELAY_MS);
         } else {
-          // Round trip: search departure month vs return month using prices_for_dates endpoint
+          // Round trip: search departure month vs return month using pricesForDates endpoint
           for (const returnMonth of returnMonths) {
             // Skip if return month is before departure month
             if (returnMonth < departMonth) continue;
 
             try {
               console.log(`[collectOffers] Fetching round-trip: ${origin}->${destination} ${departMonth} → ${returnMonth}`);
-              const offers = await provider.searchOffers({
+              const offers = await provider.pricesForDates?.({
                 origin,
                 destination,
                 departureAt: departMonth, // Month format: YYYY-MM
                 returnAt: returnMonth, // Month format: YYYY-MM
                 oneWay: false,
-                directOnly: watch.directOnly,
+                direct: watch.directOnly,
                 currency: watch.currency,
+                sorting: "price",
                 limit: 100,
-              });
+              }) || [];
 
               // Filter to offers with valid depart/return dates and stay duration
               const filtered = offers.filter((o) => {
@@ -278,6 +281,73 @@ export async function processWatchById(id: string): Promise<void> {
   console.log(`Manual search: ${watch.label ?? watch.id}`);
   await processWatch(watch, capState);
   console.log("Manual search complete");
+}
+
+/**
+ * Process a watch using per-day queries: fetch top 2 deals for nonstop
+ * and 1-stop flights, then store and alert.
+ */
+export async function processWatchPerDay(
+  watch: Watch,
+  capState: DailyCapState,
+): Promise<void> {
+  const tag = watch.label ?? watch.id;
+
+  // 1) Historical best BEFORE this run
+  const prior = await prisma.priceSnapshot.aggregate({
+    where: { watchId: watch.id },
+    _min: { price: true },
+  });
+  const previousBest = prior._min.price ?? null;
+
+  // 2) Collect top deals per day
+  const dailyDeals = await collectDealsPerDay(watch);
+  if (dailyDeals.length === 0) {
+    console.log(`[${tag}] no matching offers this run`);
+    return;
+  }
+
+  // 3) Flatten all offers and store snapshots
+  const allOffers: FlightOffer[] = [];
+  for (const category of dailyDeals) {
+    allOffers.push(...category.deals);
+  }
+
+  await prisma.priceSnapshot.createMany({
+    data: allOffers.map((o) => ({
+      watchId: watch.id,
+      origin: o.origin,
+      destination: o.destination,
+      departDate: new Date(o.departDate),
+      returnDate: o.returnDate ? new Date(o.returnDate) : null,
+      stops: o.stops,
+      price: o.price,
+      currency: o.currency,
+      airline: o.airline,
+      link: o.link,
+      foundAt: o.foundAt,
+    })),
+  });
+
+  // 4) Find best overall
+  const best = allOffers.reduce((a, b) => (b.price < a.price ? b : a));
+  console.log(
+    `[${tag}] best ${best.origin}->${best.destination} ${best.price} ${best.currency} (${best.stops === 0 ? "nonstop" : best.stops + " stops"}) (prev best ${previousBest ?? "—"})`,
+  );
+
+  // 5) Alerts (check snooze first)
+  const snoozed = watch.snoozeUntil && watch.snoozeUntil > new Date();
+  if (snoozed) {
+    console.log(`[${tag}] snoozed until ${watch.snoozeUntil?.toISOString()}`);
+    return;
+  }
+
+  if (previousBest === null || best.price < previousBest) {
+    await fireAlert(watch, "NEW_LOW", best, previousBest, capState);
+  }
+  if (watch.threshold !== null && best.price <= watch.threshold) {
+    await fireAlert(watch, "THRESHOLD", best, previousBest, capState);
+  }
 }
 
 /** Process all active watches sequentially (keeps us under rate limits). */

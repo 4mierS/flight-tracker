@@ -1,0 +1,32 @@
+declare const styles: {
+  dealsContainer: string;
+  dealsHeader: string;
+  dealsCount: string;
+  dealsGrid: string;
+  dealCategory: string;
+  categoryHeader: string;
+  categoryTitle: string;
+  dealCount: string;
+  expandIcon: string;
+  expanded: string;
+  dealsList: string;
+  dealCard: string;
+  dealRoute: string;
+  airport: string;
+  arrow: string;
+  dealDates: string;
+  dateItem: string;
+  dateLabel: string;
+  dateValue: string;
+  dealPrice: string;
+  priceValue: string;
+  priceCurrency: string;
+  dealAirline: string;
+  btnBook: string;
+  emptyState: string;
+  emptyIcon: string;
+  loadingSkeleton: string;
+  skeletonCard: string;
+};
+
+export default styles;

@@ -4,6 +4,7 @@ import type {
   MonthMatrixQuery,
   NearbyQuery,
   OfferQuery,
+  PricesForDatesQuery,
 } from "./types";
 
 const BASE = "https://api.travelpayouts.com";
@@ -133,6 +134,44 @@ export class TravelpayoutsProvider implements FlightDataProvider {
         page: 1,
       },
     );
+
+    return (rows ?? []).map((r) => ({
+      origin: r.origin,
+      destination: r.destination,
+      originAirport: r.origin_airport,
+      destinationAirport: r.destination_airport,
+      departDate: toDateOnly(r.departure_at)!,
+      returnDate: q.oneWay ? null : toDateOnly(r.return_at),
+      stops: r.transfers ?? 0,
+      price: r.price,
+      currency: q.currency,
+      airline: r.airline,
+      link: r.link ? `${AVIASALES_WEB}${r.link}` : undefined,
+    }));
+  }
+
+  /** Direct prices_for_dates endpoint with full API control. */
+  async pricesForDates(q: PricesForDatesQuery): Promise<FlightOffer[]> {
+    console.log(`[pricesForDates] Query: ${q.origin} → ${q.destination}`);
+    console.log(`[pricesForDates] Departure: ${q.departureAt}${q.returnAt ? `, Return: ${q.returnAt}` : ""}, OneWay: ${q.oneWay}`);
+
+    const rows = await this.get<PricesForDatesRow[]>(
+      "/aviasales/v3/prices_for_dates",
+      {
+        origin: q.origin,
+        destination: q.destination,
+        departure_at: q.departureAt,
+        return_at: q.returnAt,
+        one_way: q.oneWay,
+        direct: q.direct,
+        currency: q.currency.toLowerCase(),
+        sorting: q.sorting ?? "price",
+        limit: q.limit ?? 100,
+        page: q.page ?? 1,
+      },
+    );
+
+    console.log(`[pricesForDates] Returned ${(rows ?? []).length} fares`);
 
     return (rows ?? []).map((r) => ({
       origin: r.origin,
