@@ -39,11 +39,6 @@ function matchesWatch(watch: Watch, o: FlightOffer): boolean {
 
   if (watch.tripType === "RETURN") {
     if (!o.returnDate) return false;
-    if (
-      watch.returnFrom &&
-      (o.returnDate < ymd(watch.returnFrom) || o.returnDate > ymd(watch.returnTo!))
-    )
-      return false;
     if (watch.minStayDays && daysBetween(o.departDate, o.returnDate) < watch.minStayDays)
       return false;
     if (watch.maxStayDays && daysBetween(o.departDate, o.returnDate) > watch.maxStayDays)
@@ -59,7 +54,7 @@ async function collectOffers(watch: Watch): Promise<FlightOffer[]> {
 
   // Extract months from date ranges
   const departMonths = monthsBetween(watch.departFrom, watch.departTo);
-  const returnMonths = oneWay || !watch.returnFrom ? [] : monthsBetween(watch.returnFrom, watch.returnTo!);
+  const returnMonths = oneWay ? [] : (watch.returnFrom ? monthsBetween(watch.returnFrom, watch.returnTo!) : []);
 
   console.log(`[collectOffers] Watch: ${watch.label ?? watch.id}`);
   console.log(`[collectOffers] Departure months: ${departMonths.join(", ")}`);
@@ -73,16 +68,18 @@ async function collectOffers(watch: Watch): Promise<FlightOffer[]> {
     for (const destination of watch.destinations) {
       for (const departMonth of departMonths) {
         if (oneWay) {
-          // One-way: search by month
+          // One-way: search by month using prices_for_dates endpoint
           try {
             console.log(`[collectOffers] Fetching one-way flights: ${origin}->${destination} in ${departMonth}`);
-            const offers = await provider.monthMatrix?.({
+            const offers = await provider.searchOffers({
               origin,
               destination,
-              month: departMonth,
+              departureAt: departMonth, // Month format: YYYY-MM
               oneWay: true,
+              directOnly: watch.directOnly,
               currency: watch.currency,
-            }) || [];
+              limit: 100,
+            });
             all.push(...offers.filter((o) => matchesWatch(watch, o)));
           } catch (err) {
             console.error(
@@ -92,26 +89,33 @@ async function collectOffers(watch: Watch): Promise<FlightOffer[]> {
           }
           await sleep(env.PROVIDER_REQUEST_DELAY_MS);
         } else {
-          // Round trip: search all departure days in month vs all return days in month(s)
+          // Round trip: search departure month vs return month using prices_for_dates endpoint
           for (const returnMonth of returnMonths) {
             // Skip if return month is before departure month
             if (returnMonth < departMonth) continue;
 
             try {
               console.log(`[collectOffers] Fetching round-trip: ${origin}->${destination} ${departMonth} → ${returnMonth}`);
-              const offers = await provider.monthMatrix?.({
+              const offers = await provider.searchOffers({
                 origin,
                 destination,
-                month: departMonth, // Depart in this month
+                departureAt: departMonth, // Month format: YYYY-MM
+                returnAt: returnMonth, // Month format: YYYY-MM
                 oneWay: false,
+                directOnly: watch.directOnly,
                 currency: watch.currency,
-              }) || [];
+                limit: 100,
+              });
 
-              // Filter to offers that depart in departMonth and return in returnMonth with valid stay
+              // Filter to offers with valid depart/return dates and stay duration
               const filtered = offers.filter((o) => {
-                if (o.departDate < ym(watch.departFrom) || o.departDate > ym(watch.departTo)) return false;
+                if (o.departDate < ymd(watch.departFrom) || o.departDate > ymd(watch.departTo)) return false;
                 if (!o.returnDate) return false;
-                if (o.returnDate < ym(watch.returnFrom!) || o.returnDate > ym(watch.returnTo!)) return false;
+                if (
+                  watch.returnFrom &&
+                  (o.returnDate < ymd(watch.returnFrom) || o.returnDate > ymd(watch.returnTo!))
+                )
+                  return false;
 
                 // Check stay duration
                 const stay = daysBetween(o.departDate, o.returnDate);

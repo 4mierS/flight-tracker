@@ -6,7 +6,7 @@ import { prisma } from "../lib/db"
  * Idempotent: re-running replaces the watch with the same label instead of
  * creating duplicates. Then `npm run worker:once` to do a single fetch cycle.
  */
-const LABEL = "Germany→Jordan (direct)"
+const LABEL = "Germany→Jordan"
 
 async function main() {
   // Idempotency: clear any prior watch with this label before re-creating.
@@ -16,23 +16,24 @@ async function main() {
     data: {
       label: LABEL,
       // German airports with nonstop service to Amman.
-      origins: ["FRA", "MUC", "BER", "DUS", "HAM", "STR", "CGN"],
-      destinations: ["AMM", "AQJ"], // Amman, Queen Alia International
+      origins: ["DUS", "HAM"],
+      destinations: ["AMM"],
       tripType: "RETURN",
 
-      // Depart window: next ~3 months.
+      // Depart window: All of July
       departFrom: new Date("2026-07-01"),
-      departTo: new Date("2026-11-15"),
-      // Return window: through end of September.
-      returnFrom: new Date("2026-07-15"),
-      returnTo: new Date("2026-11-30"),
-      minStayDays: 14, // at least a week in Jordan
+      departTo: new Date("2026-07-31"),
+      // Return window: July 10 through August 30 (so 9-30 day stays from July departures)
+      returnFrom: new Date("2026-07-10"),
+      returnTo: new Date("2026-08-30"),
+      minStayDays: 9,
+      maxStayDays: 30,
 
-      directOnly: true, // strict nonstop only
-      maxStops: 0,
+      directOnly: false,
+      maxStops: 2,
       passengers: 3,
 
-      threshold: 350, // alert at/below 350 EUR
+      threshold: 700, // alert at/below 700 EUR
       currency: "EUR",
       active: true,
     },
